@@ -33,11 +33,15 @@ fi
 
 # 将指定脚本复制到 bin 目录
 cp  ./ezvllm $HOME/bin
+cp  ./ezproxy $HOME/bin
 
 # 赋予脚本执行权限
 chmod +x $HOME/bin/ezvllm
+chmod +x $HOME/bin/ezproxy
+
 # 输出提示信息
 echo "ezvllm 已安装到 $HOME/bin 目录。"
+echo "ezproxy 已安装到 $HOME/bin 目录。"
 # 提示用户重新加载配置
 echo "请运行 'source ~/.bashrc' 或 'source ~/.zshrc' 以使更改生效。"
 # 提示用户使用 ezvllm 命令
