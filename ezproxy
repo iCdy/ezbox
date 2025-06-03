@@ -1,7 +1,7 @@
 #! /bin/bash
 
 # 版本信息
-VERSION="1.0.0"
+VERSION="1.1.0"
 
 # 配置文件
 CONFIG_FILE="$HOME/.config/ezproxy/config"
@@ -37,17 +37,26 @@ usage() {
     echo "  -i IP            设置代理IP地址 (默认: SSH客户端IP)"
     echo "  -p PORT          设置代理端口号 (默认: $DEFAULT_PORT)"
     echo "  -d DEFAULT_PORT  设置默认端口号 (当前: $DEFAULT_PORT)"
+    echo "  -v VERSION       显示版本信息"
+    echo "  -r RESET         取消代理设置"
     echo "  -h               显示此帮助信息"
     exit 1
 }
 
 # 解析命令行参数
-while getopts "i:p:d:h" opt; do
+while getopts "i:p:d:rvh" opt; do
     case $opt in
         i) PROXY_IP="$OPTARG" ;;
         p) PROXY_PORT="$OPTARG" ;;
         d) DEFAULT_PORT="$OPTARG" 
            PROXY_PORT="$DEFAULT_PORT" ;; # 如果设置了默认端口，当前端口也使用该值
+        r) # 取消代理设置
+           unset http_proxy https_proxy all_proxy
+           echo "已取消代理设置"
+           exit 0 ;;
+        v) # 显示版本信息
+           echo "ezproxy 版本 $VERSION"
+           exit 0 ;;
         h) usage ;;
         *) usage ;;
     esac
