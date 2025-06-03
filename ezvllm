@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # 版本信息
-VERSION="1.0.0"
+VERSION="1.1.0"
 
 # 默认参数值
 ENV_NAME="vllm"
@@ -13,6 +13,7 @@ MAX_MODEL_LEN=""
 GPU_UTIL="0.9"
 DISABLE_FUNCTION_CALL=false
 SYSTEM_PROMPT=""
+USER_PROMPT=""
 TEMPERATURE="0.7"
 COMMAND=""
 CONFIG_FILE="$HOME/.config/ezvllm/config"
@@ -41,6 +42,7 @@ config_load() {
         MAX_MODEL_LEN) MAX_MODEL_LEN="$value" ;;
         GPU_UTIL) GPU_UTIL="$value" ;;
         SYSTEM_PROMPT) SYSTEM_PROMPT="$value" ;;
+        USER_PROMPT) USER_PROMPT="$value" ;;
         TEMPERATURE) TEMPERATURE="$value" ;;
         DISABLE_FUNCTION_CALL) 
           if [[ "$value" == "true" || "$value" == "1" || "$value" == "yes" ]]; then
@@ -68,6 +70,7 @@ config_load() {
       echo "GPU_UTIL=$GPU_UTIL" >> "$CONFIG_FILE"
       echo "DISABLE_FUNCTION_CALL=$DISABLE_FUNCTION_CALL" >> "$CONFIG_FILE"
       echo "SYSTEM_PROMPT=$SYSTEM_PROMPT" >> "$CONFIG_FILE"
+      echo "USER_PROMPT=$USER_PROMPT" >> "$CONFIG_FILE"
       echo "TEMPERATURE=$TEMPERATURE" >> "$CONFIG_FILE"
       echo "已创建默认配置文件: $CONFIG_FILE"
     fi
@@ -149,7 +152,9 @@ show_chat_help() {
   echo "  -p, --port PORT          指定端口号 (默认: $PORT)"
   echo "  -k, --api-key KEY        指定API密钥 (默认: $API_KEY)"
   echo "  -s, --system TEXT        设置系统提示信息 (默认: ${SYSTEM_PROMPT:-无})"
+  echo "  -u, --user TEXT          设置用户输入（默认：${USER_PROMPT:-无})"
   echo "  -t, --temperature VAL    设置温度参数 (默认: ${TEMPERATURE:-0.7})"
+  echo "  -1, --single             单轮对话模式"
   echo "  -h, --help               显示此帮助信息"
   exit 0
 }
@@ -378,6 +383,7 @@ case "$COMMAND" in
           echo "  GPU_UTIL              - GPU利用率 (默认: $GPU_UTIL)"
           echo "  DISABLE_FUNCTION_CALL - 禁用函数调用 (默认: $DISABLE_FUNCTION_CALL)"
           echo "  SYSTEM_PROMPT         - 系统提示词 (默认: 空)"
+          echo "  USER_PROMPT           - 用户输入提示 (默认: 空)"
           echo "  TEMPERATURE           - 生成温度 (默认: $TEMPERATURE)"
           exit 0
           ;;
@@ -393,6 +399,7 @@ case "$COMMAND" in
     ;;
   chat)
     # 解析chat命令的参数
+    SINGLE_MODE=false
     while [[ $# -gt 0 ]]; do
       case $1 in
         -m|--model-name)
@@ -413,6 +420,14 @@ case "$COMMAND" in
           ;;
         -t|--temperature)
           TEMPERATURE="$2"
+          shift 2
+          ;;
+        -1|--single)
+          SINGLE_MODE=true
+          shift
+          ;;
+        -u|--user)
+          USER_PROMPT="$2"
           shift 2
           ;;
         -h|--help)
@@ -564,6 +579,85 @@ if [ "$COMMAND" = "chat" ]; then
       '. + [{"role": "system", "content": $prompt}]')
   fi
   
+  # 处理单轮对话模式 (-1/--single)
+  if [ "$SINGLE_MODE" = true ]; then
+    # 单轮对话模式
+    if [ -n "$USER_PROMPT" ]; then
+      # 如果设置了user_prompt，直接使用该值
+      MESSAGES=$(echo "$MESSAGES" | jq --arg prompt "$USER_PROMPT" \
+        '. + [{"role": "user", "content": $prompt}]')
+    else
+      # 如果没有设置user_prompt，让用户手动输入一次
+      echo "请输入您的问题 (单轮对话模式)："
+      echo -n "用户: "
+      read -r USER_INPUT
+      MESSAGES=$(echo "$MESSAGES" | jq --arg content "$USER_INPUT" \
+        '. + [{"role": "user", "content": $content}]')
+    fi
+    
+    # 发送请求到API
+    echo "正在处理您的请求..."
+    RESPONSE=$(curl -s -X POST "http://localhost:$PORT/v1/chat/completions" \
+      -H "Authorization: Bearer $API_KEY" \
+      -H "Content-Type: application/json" \
+      -d '{
+        "model": "'"$MODEL_NAME"'",
+        "messages": '"$MESSAGES"',
+        "temperature": '"$TEMPERATURE"'
+      }')
+    
+    # 检查错误
+    if [[ "$RESPONSE" == *"error"* || -z "$RESPONSE" ]]; then
+      echo "错误: $(echo "$RESPONSE" | jq -r '.error.message // .error // "API请求失败"' 2>/dev/null || echo "$RESPONSE")"
+      exit 1
+    fi
+    
+    # 提取助手回复
+    ASSISTANT_REPLY=$(echo "$RESPONSE" | jq -r '.choices[0].message.content' 2>/dev/null)
+    
+    # 显示助手回复
+    echo -e "\n助手: $ASSISTANT_REPLY\n"
+    
+    # 单轮对话模式直接退出
+    exit 0
+  fi
+  
+  # 多轮对话模式
+  # 添加用户消息(如果提供)
+  if [ -n "$USER_PROMPT" ]; then
+    MESSAGES=$(echo "$MESSAGES" | jq --arg prompt "$USER_PROMPT" \
+      '. + [{"role": "user", "content": $prompt}]')
+    
+    # 如果提供了USER_PROMPT，直接发送第一个请求
+    echo "发送初始请求..."
+    RESPONSE=$(curl -s -X POST "http://localhost:$PORT/v1/chat/completions" \
+      -H "Authorization: Bearer $API_KEY" \
+      -H "Content-Type: application/json" \
+      -d '{
+        "model": "'"$MODEL_NAME"'",
+        "messages": '"$MESSAGES"',
+        "temperature": '"$TEMPERATURE"'
+      }')
+    
+    # 检查错误
+    if [[ "$RESPONSE" == *"error"* || -z "$RESPONSE" ]]; then
+      echo "错误: $(echo "$RESPONSE" | jq -r '.error.message // .error // "API请求失败"' 2>/dev/null || echo "$RESPONSE")"
+      echo "调试信息: 尝试发送到 http://localhost:$PORT/v1/chat/completions"
+      echo "消息内容: $MESSAGES"
+      exit 1
+    fi
+    
+    # 提取助手回复
+    ASSISTANT_REPLY=$(echo "$RESPONSE" | jq -r '.choices[0].message.content' 2>/dev/null)
+    
+    # 显示助手回复
+    echo -e "用户: $USER_PROMPT\n\n助手: $ASSISTANT_REPLY\n"
+    
+    # 添加助手回复到消息数组
+    MESSAGES=$(echo "$MESSAGES" | jq --arg content "$ASSISTANT_REPLY" \
+      '. + [{"role": "assistant", "content": $content}]')
+  fi
+
   echo "开始与 $MODEL_NAME 聊天 (输入 'exit' 或 'quit' 退出)"
   echo "---------------------------------------------"
   
