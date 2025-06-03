@@ -23,8 +23,8 @@
 
 ```bash
 # 克隆仓库
-git clone https://github.com/yourusername/cdy-tools.git
-cd cdy-tools
+git clone https://github.com/iCdy/shell.git
+cd shell
 
 # 运行安装脚本
 ./init.sh
