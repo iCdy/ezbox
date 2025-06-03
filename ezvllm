@@ -1,0 +1,655 @@
+#!/bin/bash
+
+# 默认参数值
+ENV_NAME="vllm"
+GPU_ID="0"
+MODEL_NAME="Qwen/Qwen3-4B"
+API_KEY="1205"
+PORT="8009"
+MAX_MODEL_LEN="" 
+GPU_UTIL="0.9"
+DISABLE_FUNCTION_CALL=false
+SYSTEM_PROMPT=""
+TEMPERATURE="0.7"
+COMMAND=""
+CONFIG_FILE="$HOME/.config/ezvllm/config"
+
+# 加载配置文件函数
+config_load() {
+  # 检查配置文件是否存在
+  if [ -f "$CONFIG_FILE" ]; then
+    # echo "正在从 $CONFIG_FILE 加载配置..."
+    
+    # 从配置文件中读取参数
+    while IFS='=' read -r key value; do
+      # 跳过注释和空行
+      [[ $key =~ ^#.*$ || -z $key ]] && continue
+      
+      # 移除可能存在的引号
+      value=$(echo "$value" | sed -e 's/^"//' -e 's/"$//' -e "s/^'//" -e "s/'$//")
+      
+      # 根据键设置相应的变量
+      case "$key" in
+        ENV_NAME) ENV_NAME="$value" ;;
+        GPU_ID) GPU_ID="$value" ;;
+        MODEL_NAME) MODEL_NAME="$value" ;;
+        API_KEY) API_KEY="$value" ;;
+        PORT) PORT="$value" ;;
+        MAX_MODEL_LEN) MAX_MODEL_LEN="$value" ;;
+        GPU_UTIL) GPU_UTIL="$value" ;;
+        SYSTEM_PROMPT) SYSTEM_PROMPT="$value" ;;
+        TEMPERATURE) TEMPERATURE="$value" ;;
+        DISABLE_FUNCTION_CALL) 
+          if [[ "$value" == "true" || "$value" == "1" || "$value" == "yes" ]]; then
+            DISABLE_FUNCTION_CALL=true
+          else
+            DISABLE_FUNCTION_CALL=false
+          fi
+          ;;
+      esac
+    done < "$CONFIG_FILE"
+    
+    # echo "配置已加载"
+  else
+    echo "配置文件 $CONFIG_FILE 不存在，使用默认配置"
+    # 尝试创建配置目录和默认配置文件
+    mkdir -p "$(dirname "$CONFIG_FILE")" 2>/dev/null
+    if [ $? -eq 0 ]; then
+      echo "# ezvllm 默认配置文件" > "$CONFIG_FILE"
+      echo "ENV_NAME=$ENV_NAME" >> "$CONFIG_FILE"
+      echo "GPU_ID=$GPU_ID" >> "$CONFIG_FILE"
+      echo "MODEL_NAME=$MODEL_NAME" >> "$CONFIG_FILE"
+      echo "API_KEY=$API_KEY" >> "$CONFIG_FILE"
+      echo "PORT=$PORT" >> "$CONFIG_FILE"
+      echo "MAX_MODEL_LEN=$MAX_MODEL_LEN" >> "$CONFIG_FILE"
+      echo "GPU_UTIL=$GPU_UTIL" >> "$CONFIG_FILE"
+      echo "DISABLE_FUNCTION_CALL=$DISABLE_FUNCTION_CALL" >> "$CONFIG_FILE"
+      echo "SYSTEM_PROMPT=$SYSTEM_PROMPT" >> "$CONFIG_FILE"
+      echo "TEMPERATURE=$TEMPERATURE" >> "$CONFIG_FILE"
+      echo "已创建默认配置文件: $CONFIG_FILE"
+    fi
+  fi
+}
+
+# 显示主帮助信息
+show_help() {
+  echo "用法: ezvllm [命令] [选项]"
+  echo "命令:"
+  echo "  serve                    启动vllm服务（默认命令）"
+  echo "  check                    检查指定端口上运行的模型"
+  echo "  config                   管理配置文件"
+  echo "  chat                     与模型进行交互式对话"
+  echo "  help                     显示此帮助信息"
+  echo ""
+  echo "运行 'ezvllm help <命令>' 查看特定命令的帮助信息"
+  exit 0
+}
+
+# 显示serve命令帮助信息
+show_serve_help() {
+  echo "用法: ezvllm serve [选项]"
+  echo "选项:"
+  echo "  -e, --env-name NAME       指定conda环境名称 (默认: $ENV_NAME)"
+  echo "  -g, --gpu-id ID           指定GPU ID (默认: $GPU_ID)"
+  echo "  -m, --model-name NAME     指定模型名称 (默认: $MODEL_NAME)"
+  echo "  -k, --api-key KEY         指定API密钥 (默认: $API_KEY)"
+  echo "  -p, --port PORT           指定端口号 (默认: $PORT)"
+  echo "  -l, --max-model-len LEN   指定最大模型长度 (默认: ${MAX_MODEL_LEN:-不限制})"
+  echo "  -u, --gpu-util UTIL       指定GPU使用率 (默认: $GPU_UTIL)"
+  echo "  -d, --disable-function    禁用function call功能"
+  echo "  -v, --vllm-args \"ARGS\"    传递额外参数给vllm serve命令（需要放在最后）"
+  echo "  -h, --help                显示此帮助信息"
+  exit 0
+}
+
+# 显示check命令帮助信息
+show_check_help() {
+  echo "用法: ezvllm check [选项]"
+  echo "选项:"
+  echo "  -p, --port PORT           指定端口号 (默认: $PORT)"
+  echo "  -k, --api-key KEY         指定API密钥 (默认: $API_KEY)"
+  echo "  -h, --help                显示此帮助信息"
+  echo "  -t, --test                测试API连接"
+  echo "  -m, --model-name NAME     指定模型名称 (默认: $MODEL_NAME)"
+  echo "  -i, --info                输出详细内容"
+  exit 0
+}
+
+# 显示config命令帮助信息
+show_config_help() {
+  echo "用法: ezvllm config [选项]"
+  echo "选项:"
+  echo "  show                     显示当前配置"
+  echo "  edit                     编辑配置文件"
+  echo "  set KEY=VALUE            设置配置项"
+  echo "  unset KEY                移除配置项"
+  echo "  param                    显示所有可用的配置参数"
+  echo "  -h, --help               显示此帮助信息"
+  exit 0
+}
+
+# 显示 chat 命令帮助信息
+show_chat_help() {
+  echo "用法: ezvllm chat [选项]"
+  echo "选项:"
+  echo "  -m, --model-name NAME    指定模型名称 (默认: $MODEL_NAME)"
+  echo "  -p, --port PORT          指定端口号 (默认: $PORT)"
+  echo "  -k, --api-key KEY        指定API密钥 (默认: $API_KEY)"
+  echo "  -s, --system TEXT        设置系统提示信息 (默认: ${SYSTEM_PROMPT:-无})"
+  echo "  -t, --temperature VAL    设置温度参数 (默认: ${TEMPERATURE:-0.7})"
+  echo "  -h, --help               显示此帮助信息"
+  exit 0
+}
+
+# 加载配置文件
+config_load
+
+# 解析命令
+if [[ $# -gt 0 ]]; then
+  case "$1" in
+    serve)
+      COMMAND="serve"
+      shift
+      ;;
+    check)
+      COMMAND="check"
+      shift
+      ;;
+    config)
+      COMMAND="config"
+      shift
+      ;;
+    chat)
+      COMMAND="chat"
+      shift
+      ;;
+    help)
+      if [[ $# -eq 1 ]]; then
+        show_help
+      elif [[ "$2" == "serve" ]]; then
+        show_serve_help
+      elif [[ "$2" == "check" ]]; then
+        show_check_help
+      elif [[ "$2" == "config" ]]; then
+        show_config_help
+      elif [[ "$2" == "chat" ]]; then
+        show_chat_help
+      else
+        echo "未知命令: $2"
+        show_help
+      fi
+      ;;
+    -h|--help)
+      show_help
+      ;;
+    *)
+      # 如果没有指定命令，默认为serve
+      COMMAND="serve"
+      # 不需要shift，因为当前参数可能是选项
+      ;;
+  esac
+else
+  # 如果没有任何参数，默认为serve
+  COMMAND="serve"
+fi
+
+# 根据命令解析参数
+case "$COMMAND" in
+  serve)
+    # 解析serve命令的参数
+    while [[ $# -gt 0 ]]; do
+      case $1 in
+        -e|--env-name)
+          ENV_NAME="$2"
+          shift 2
+          ;;
+        -g|--gpu-id)
+          GPU_ID="$2"
+          shift 2
+          ;;
+        -m|--model-name)
+          MODEL_NAME="$2"
+          shift 2
+          ;;
+        -k|--api-key)
+          API_KEY="$2"
+          shift 2
+          ;;
+        -p|--port)
+          PORT="$2"
+          shift 2
+          ;;
+        -l|--max-model-len)
+          MAX_MODEL_LEN="$2"
+          shift 2
+          ;;
+        -u|--gpu-util)
+          GPU_UTIL="$2"
+          shift 2
+          ;;
+        -d|--disable-function)
+          DISABLE_FUNCTION_CALL=true
+          shift
+          ;;
+        -v|--vllm-args)
+          # 收集剩余所有参数作为VLLM参数
+          shift
+          VLLM_EXTRA_ARGS="$*"
+          # 由于已经处理了所有参数，直接跳出循环
+          break
+          ;;
+        -h|--help)
+          show_serve_help
+          ;;
+        *)
+          echo "未知选项: $1"
+          show_serve_help
+          ;;
+      esac
+    done
+    ;;
+  check)
+    # 解析check命令的参数
+    TEST_MODE=false
+    INFO_MODE=false
+    while [[ $# -gt 0 ]]; do
+      case $1 in
+        -p|--port)
+          PORT="$2"
+          shift 2
+          ;;
+        -k|--api-key)
+          API_KEY="$2"
+          shift 2
+          ;;
+        -m|--model-name)
+          MODEL_NAME="$2"
+          shift 2
+          ;;
+        -t|--test)
+          TEST_MODE=true
+          shift
+          ;;
+        -h|--help)
+          show_check_help
+          ;;
+        -i|--info)
+          INFO_MODE=true
+          shift
+          ;;
+        *)
+          echo "未知选项: $1"
+          show_check_help
+          ;;
+      esac
+    done
+    ;;
+  config)
+    # 解析config命令的参数
+    while [[ $# -gt 0 ]]; do
+      case $1 in
+        show)
+          # 显示当前配置
+          echo "当前配置:"
+          cat "$CONFIG_FILE"
+          exit 0
+          ;;
+        edit)
+          # 编辑配置文件
+          ${EDITOR:-vim} "$CONFIG_FILE"
+          exit 0
+          ;;
+        set)
+          # 设置配置项
+          if [[ $# -lt 2 ]]; then
+            echo "用法: ezvllm config set KEY=VALUE"
+            exit 1
+          fi
+          # 提取键值对
+          IFS='=' read -r key value <<< "$2"
+          # 更新配置文件
+          if [ -f "$CONFIG_FILE" ]; then
+            # 如果配置文件存在
+            if grep -q "^$key=" "$CONFIG_FILE"; then
+              # 如果键存在，更新对应的值
+              sed -i "s/^$key=.*/$key=$value/" "$CONFIG_FILE"
+            else
+              # 如果键不存在，添加新配置
+              echo "$key=$value" >> "$CONFIG_FILE"
+            fi
+          else
+            # 如果配置文件不存在，创建配置目录和文件并添加新配置
+            mkdir -p "$(dirname "$CONFIG_FILE")" 2>/dev/null
+            echo "# ezvllm 默认配置文件" > "$CONFIG_FILE"
+            echo "$key=$value" >> "$CONFIG_FILE"
+          fi
+          echo "已更新配置: $key=$value"
+          exit 0
+          ;;
+        unset)
+          # 移除配置项
+          if [[ $# -lt 2 ]]; then
+            echo "用法: ezvllm config unset KEY"
+            exit 1
+          fi
+          # 获取要移除的键
+          key="$2"
+          # 检查配置文件是否存在
+          if [ ! -f "$CONFIG_FILE" ]; then
+            echo "错误: 配置文件不存在"
+            exit 1
+          fi
+          # 检查键是否存在于配置文件中
+          if grep -q "^$key=" "$CONFIG_FILE"; then
+            # 如果键存在，移除该行
+            sed -i "/^$key=/d" "$CONFIG_FILE"
+            echo "已移除配置项: $key"
+          else
+            echo "配置项不存在: $key"
+            exit 1
+          fi
+          exit 0
+          ;;
+        param)
+          # 显示所有可用的配置参数
+          echo "可用的配置参数:"
+          echo "  ENV_NAME              - Python虚拟环境名称 (默认: $ENV_NAME)"
+          echo "  GPU_ID                - 使用的GPU ID (默认: $GPU_ID)"
+          echo "  MODEL_NAME            - 模型名称 (默认: $MODEL_NAME)"
+          echo "  API_KEY               - API密钥 (默认: $API_KEY)"
+          echo "  PORT                  - 服务端口 (默认: $PORT)"
+          echo "  MAX_MODEL_LEN         - 最大模型长度 (默认: 自动)"
+          echo "  GPU_UTIL              - GPU利用率 (默认: $GPU_UTIL)"
+          echo "  DISABLE_FUNCTION_CALL - 禁用函数调用 (默认: $DISABLE_FUNCTION_CALL)"
+          echo "  SYSTEM_PROMPT         - 系统提示词 (默认: 空)"
+          echo "  TEMPERATURE           - 生成温度 (默认: $TEMPERATURE)"
+          exit 0
+          ;;
+        -h|--help)
+          show_config_help
+          ;;
+        *)
+          echo "未知选项: $1"
+          show_config_help
+          ;;
+      esac
+    done
+    ;;
+  chat)
+    # 解析chat命令的参数
+    while [[ $# -gt 0 ]]; do
+      case $1 in
+        -m|--model-name)
+          MODEL_NAME="$2"
+          shift 2
+          ;;
+        -p|--port)
+          PORT="$2"
+          shift 2
+          ;;
+        -k|--api-key)
+          API_KEY="$2"
+          shift 2
+          ;;
+        -s|--system)
+          SYSTEM_PROMPT="$2"
+          shift 2
+          ;;
+        -t|--temperature)
+          TEMPERATURE="$2"
+          shift 2
+          ;;
+        -h|--help)
+          show_chat_help
+          ;;
+        *)
+          echo "未知选项: $1"
+          show_chat_help
+          ;;
+      esac
+    done
+    ;;
+esac
+
+
+# 检查模型函数
+check_running_model() {
+  local port="$1"
+  local api_key="$2"
+  
+  echo "正在检查端口 $port 上运行的 vllm 服务..."
+  
+  # 检查端口是否在监听
+  if ! netstat -tuln | grep -q ":$port "; then
+    echo "错误: 端口 $port 上没有运行服务"
+    return 1
+  fi
+  
+# 尝试通过API获取模型信息
+  echo "发送 API 请求到 http://localhost:$port..."
+  model_info=$(curl -s -X GET "http://localhost:$port/v1/models" \
+    -H "Authorization: Bearer $api_key" \
+    -H "Content-Type: application/json")
+  
+  if [[ "$model_info" == *"error"* ]]; then
+    echo "获取模型信息失败: $model_info"
+    return 1
+  else
+    # 尝试提取模型名称
+    model_name=$(echo "$model_info" | jq -r '.data[0].id' 2>/dev/null)
+    
+    if [ $? -eq 0 ] && [ -n "$model_name" ] && [ "$model_name" != "null" ]; then
+      echo "当前运行的模型: $model_name"
+      
+      # 如果开启详细模式，则显示完整信息
+      if [[ "$INFO_MODE" = true ]]; then
+        echo "完整模型信息:"
+        echo "$model_info" | jq '.'
+      fi
+    else
+      echo "当前运行的模型信息:"
+      echo "$model_info" | jq '.'
+      
+      # 如果没有jq，可以直接输出
+      if [ $? -ne 0 ]; then
+        echo "$model_info"
+      fi
+    fi
+  fi
+  
+  # 获取进程信息
+  if [[ "$INFO_MODE" = true ]]; then
+    pid=$(lsof -i :$port -t)
+    if [ -n "$pid" ]; then
+      echo "进程信息:"
+      ps -p "$pid" -o pid,cmd
+    fi
+  fi
+}
+
+# 测试API连接函数
+test_api_connection() {
+  local port="$1"
+  local api_key="$2"
+  
+  echo "正在测试与端口 $port 上 vllm 服务的 $MODEL_NAME API 连接..."
+  
+  # 检查端口是否在监听
+  if ! netstat -tuln | grep -q ":$port "; then
+    echo "错误: 端口 $port 上没有运行服务"
+    return 1
+  fi
+  
+  # 尝试通过API发送简单的测试请求
+  echo "发送测试请求到 http://localhost:$port..."
+  
+  response=$(curl -s -X POST "http://localhost:$port/v1/chat/completions" \
+    -H "Authorization: Bearer $api_key" \
+    -H "Content-Type: application/json" \
+    -d '{
+      "model": "'"$MODEL_NAME"'",
+      "messages": [{"role": "user", "content": "测试消息，请回复简短的确认"}],
+      "max_tokens": 10
+    }')
+  
+  if [[ "$response" == *"error"* ]]; then
+    echo "API 连接测试失败: "
+    if [[ "$INFO_MODE" = true ]]; then
+      echo "$response" | jq '.'
+      if [ $? -ne 0 ]; then
+        echo "$response"
+      fi
+    fi
+    return 1
+  else
+    echo "API 连接测试成功！"
+    if [[ "$INFO_MODE" = true ]]; then
+      echo "服务器响应:"
+      echo "$response" | jq '.'
+      if [ $? -ne 0 ]; then
+        echo "$response"
+      fi
+    fi
+    return 0
+  fi
+}
+
+# 如果指定了check命令，则执行检查操作
+if [ "$COMMAND" = "check" ]; then
+  if [ "$TEST_MODE" = true ]; then
+    test_api_connection "$PORT" "$API_KEY"
+  else
+    check_running_model "$PORT" "$API_KEY"
+  fi
+  exit $?
+fi
+
+# 如果指定了chat命令，则启动聊天
+if [ "$COMMAND" = "chat" ]; then
+  # 检查服务是否运行
+  if ! netstat -tuln | grep -q ":$PORT "; then
+    echo "错误: 端口 $PORT 上没有运行服务，请先启动服务"
+    exit 1
+  fi
+  
+  # 测试API连接
+  echo "正在测试与模型的连接..."
+  if ! test_api_connection "$PORT" "$API_KEY" > /dev/null; then
+    echo "错误: 无法连接到模型API，请确保服务正常运行"
+    exit 1
+  fi
+  
+  # 初始化消息数组
+  MESSAGES="[]"
+  
+  # 添加系统消息(如果提供)
+  if [ -n "$SYSTEM_PROMPT" ]; then
+    MESSAGES=$(echo "$MESSAGES" | jq --arg prompt "$SYSTEM_PROMPT" \
+      '. + [{"role": "system", "content": $prompt}]')
+  fi
+  
+  echo "开始与 $MODEL_NAME 聊天 (输入 'exit' 或 'quit' 退出)"
+  echo "---------------------------------------------"
+  
+  # 聊天循环
+  while true; do
+    # 提示用户输入
+    echo -n "用户: "
+    read -r USER_INPUT
+    
+    # 检查退出命令
+    if [[ "$USER_INPUT" == "exit" || "$USER_INPUT" == "quit" ]]; then
+      echo "聊天结束"
+      exit 0
+    fi
+    
+    # 不再需要手动转义用户输入，jq 会处理
+    # USER_INPUT 直接传递给 jq
+    
+    # 添加用户消息到消息数组
+    MESSAGES=$(echo "$MESSAGES" | jq --arg content "$USER_INPUT" \
+      '. + [{"role": "user", "content": $content}]')
+    
+    # 打印调试信息
+    # echo "发送消息: $MESSAGES"
+    
+    # 发送请求到API
+    RESPONSE=$(curl -s -X POST "http://localhost:$PORT/v1/chat/completions" \
+      -H "Authorization: Bearer $API_KEY" \
+      -H "Content-Type: application/json" \
+      -d '{
+        "model": "'"$MODEL_NAME"'",
+        "messages": '"$MESSAGES"',
+        "temperature": '"$TEMPERATURE"'
+      }')
+    
+    # 检查错误
+    if [[ "$RESPONSE" == *"error"* || -z "$RESPONSE" ]]; then
+      echo "错误: $(echo "$RESPONSE" | jq -r '.error.message // .error // "API请求失败"' 2>/dev/null || echo "$RESPONSE")"
+      echo "调试信息: 尝试发送到 http://localhost:$PORT/v1/chat/completions"
+      echo "消息内容: $MESSAGES"
+      exit 1
+    fi
+    
+    # 提取助手回复
+    ASSISTANT_REPLY=$(echo "$RESPONSE" | jq -r '.choices[0].message.content' 2>/dev/null)
+    
+    # 显示助手回复
+    echo -e "\n助手: $ASSISTANT_REPLY\n"
+    
+    # 添加助手回复到消息数组
+    MESSAGES=$(echo "$MESSAGES" | jq --arg content "$ASSISTANT_REPLY" \
+      '. + [{"role": "assistant", "content": $content}]')
+  done
+  
+  exit 0
+fi
+
+# 如果是serve命令（默认），则启动服务
+echo "正在使用以下配置:"
+echo "conda环境: $ENV_NAME"
+echo "GPU ID: $GPU_ID"
+echo "模型名称: $MODEL_NAME"
+echo "API密钥: $API_KEY"
+echo "端口号: $PORT"
+echo "最大模型长度: ${MAX_MODEL_LEN:-不限制}"
+echo "GPU使用率: $GPU_UTIL"
+echo "禁用function call: $DISABLE_FUNCTION_CALL"
+
+# 激活conda环境
+# 注意：根据你的conda设置，可能需要先source conda的初始化脚本
+source ~/miniconda3/etc/profile.d/conda.sh || source ~/anaconda3/etc/profile.d/conda.sh
+conda activate $ENV_NAME
+
+# 设置环境变量
+export CUDA_VISIBLE_DEVICES="$GPU_ID"
+export TRANSFORMERS_OFFLINE="1"
+export HF_HUB_OFFLINE="1"
+
+# 构建基本vllm命令
+CMD="vllm serve \"$MODEL_NAME\" --port $PORT --api-key $API_KEY --gpu-memory-utilization $GPU_UTIL"
+
+# 如果指定了最大模型长度，则添加对应参数
+if [ -n "$MAX_MODEL_LEN" ]; then
+  CMD="$CMD --max-model-len $MAX_MODEL_LEN"
+fi
+
+# 根据是否禁用function call添加相应选项
+if [ "$DISABLE_FUNCTION_CALL" = false ]; then
+  CMD="$CMD --enable-auto-tool-choice --tool-call-parser hermes"
+fi
+
+# 添加额外的VLLM参数（如果有）
+if [ -n "$VLLM_EXTRA_ARGS" ]; then
+  CMD="$CMD $VLLM_EXTRA_ARGS"
+fi
+
+# 构建并执行vllm命令
+echo "执行命令: $CMD"
+eval $CMD
+
+# 错误处理
+if [ $? -ne 0 ]; then
+  echo "Error running vllm"
+  exit 1
+fi
