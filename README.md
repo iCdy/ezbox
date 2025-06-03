@@ -51,8 +51,8 @@ ezvllm config param
 使用以下命令快速安装所有工具:
 
 ```bash
-git clone https://github.com/yourusername/cdy-tools.git
-cd cdy-tools
+git clone https://github.com/iCdy/shell.git
+cd shell
 ./init.sh
 ```
 
