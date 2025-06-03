@@ -72,5 +72,17 @@ cd cdy-tools
 
 ## 许可
 
+本项目采用 [MIT License](LICENSE) 许可证。
+
+```
 MIT License
+
+Copyright (c) 2025 Cdy
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction...
+```
+
+完整许可证请查看 [LICENSE](LICENSE) 文件。
 
