@@ -1,112 +1,119 @@
 #! /bin/bash
 
-# 版本信息
-VERSION="1.1.0"
+VERSION="2.1.0"
 
-# 配置文件
+PROXY_IP=""
+PROXY_PORT="1080"
+
+if [ "$0" = "$BASH_SOURCE" ]; then
+    echo "警告: 此脚本应该使用 'source' 命令执行，例如: source $(basename "$0")"
+    exit 1
+fi
+
+
 CONFIG_FILE="$HOME/.config/ezproxy/config"
 
-# 确保配置文件目录存在
 CONFIG_DIR=$(dirname "$CONFIG_FILE")
 if [ ! -d "$CONFIG_DIR" ]; then
     mkdir -p "$CONFIG_DIR"
     echo "创建配置目录: $CONFIG_DIR"
 fi
 
-# 如果配置文件存在，则加载配置
 if [ -f "$CONFIG_FILE" ]; then
     source "$CONFIG_FILE"
 else
-    # 默认值
-    PROXY_IP=""
-    PROXY_PORT="1080"
-    DEFAULT_PORT="1080"
     
-    # 创建默认配置文件
     echo "# ezproxy 配置文件" > "$CONFIG_FILE"
-    echo "PROXY_IP=\"$PROXY_IP\"" >> "$CONFIG_FILE"
     echo "PROXY_PORT=\"$PROXY_PORT\"" >> "$CONFIG_FILE"
-    echo "DEFAULT_PORT=\"$DEFAULT_PORT\"" >> "$CONFIG_FILE"
     echo "创建默认配置文件: $CONFIG_FILE"
 fi
 
-# 函数：显示使用方法
 usage() {
-    echo "用法: $0 [-i IP] [-p PORT] [-d DEFAULT_PORT]"
+    echo "用法: source ezproxy [-i IP] [-p PORT] [-d DEFAULT_PORT]"
     echo "选项:"
     echo "  -i IP            设置代理IP地址 (默认: SSH客户端IP)"
-    echo "  -p PORT          设置代理端口号 (默认: $DEFAULT_PORT)"
-    echo "  -d DEFAULT_PORT  设置默认端口号 (当前: $DEFAULT_PORT)"
+    echo "  -p PORT          设置代理端口号 (默认: $PROXY_PORT)"
+    echo "  -d DEFAULT_PORT  设置默认端口号 (当前: $PROXY_PORT)"
     echo "  -v VERSION       显示版本信息"
     echo "  -r RESET         取消代理设置"
     echo "  -h               显示此帮助信息"
-    exit 1
+    return 1
 }
 
-# 解析命令行参数
-while getopts "i:p:d:rvh" opt; do
-    case $opt in
-        i) PROXY_IP="$OPTARG" ;;
-        p) PROXY_PORT="$OPTARG" ;;
-        d) DEFAULT_PORT="$OPTARG" 
-           PROXY_PORT="$DEFAULT_PORT" ;; # 如果设置了默认端口，当前端口也使用该值
-        r) # 取消代理设置
-           unset http_proxy https_proxy all_proxy
-           echo "已取消代理设置"
-           exit 0 ;;
-        v) # 显示版本信息
-           echo "ezproxy 版本 $VERSION"
-           exit 0 ;;
-        h) usage ;;
-        *) usage ;;
+save_port() {
+    echo "# ezproxy 配置文件" > "$CONFIG_FILE"
+    echo "PROXY_PORT=\"$1\"" >> "$CONFIG_FILE"
+}
+
+
+EXIT_AFTER_OPTS=false
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        -i)
+            PROXY_IP="$2"
+            shift 2
+            ;;
+        -p)
+            PROXY_PORT="$2"
+            shift 2
+            ;;
+        -d)
+            PROXY_PORT="$2"
+            save_port $PROXY_PORT
+            EXIT_AFTER_OPTS=true
+            return 0
+            ;;
+        -v)
+            echo "ezproxy 版本: $VERSION"
+            EXIT_AFTER_OPTS=true
+            return 0
+            ;;
+        -r)
+            unset http_proxy https_proxy all_proxy
+            echo "已取消代理设置"
+            EXIT_AFTER_OPTS=true
+            return 0
+            ;;
+        -h)
+            usage
+            EXIT_AFTER_OPTS=true
+            return 0
+            ;;
+        *)
+            echo "未知选项: $1"
+            usage
+            EXIT_AFTER_OPTS=true
+            return 1
+            ;;
     esac
 done
 
-# 保存设置到配置文件
-save_config() {
-    echo "# ezproxy 配置文件" > "$CONFIG_FILE"
-    echo "PROXY_IP=\"$PROXY_IP\"" >> "$CONFIG_FILE"
-    echo "PROXY_PORT=\"$PROXY_PORT\"" >> "$CONFIG_FILE"
-    echo "DEFAULT_PORT=\"$DEFAULT_PORT\"" >> "$CONFIG_FILE"
-    echo "配置已保存到 $CONFIG_FILE"
-}
+if [ "$EXIT_AFTER_OPTS" = true ]; then
+    return 0
+fi
 
-# 如果未提供IP，则尝试从SSH_CLIENT获取
 if [ -z "$PROXY_IP" ]; then
-    # 如果SSH_CLIENT环境变量不存在，则退出脚本
-    if [ -z "$SSH_CLIENT" ]; then
-        echo "未提供IP参数，且SSH_CLIENT环境变量未设置。请指定IP地址。"
-        usage
+    if [ -n "$SSH_CLIENT" ]; then
+        PROXY_IP=$(echo "$SSH_CLIENT" | awk '{print $1}')
+    else
+        echo "未提供代理IP，且无法从SSH_CLIENT获取IP"
+        return 1
     fi
-    # 从SSH_CLIENT中提取IP地址
-    PROXY_IP=$(echo "$SSH_CLIENT" | awk '{print $1}')
-    echo "使用SSH客户端IP: $PROXY_IP"
 fi
 
-# 仅当使用 -d 参数修改默认端口时保存设置
-if [[ $* == *"-d"* ]]; then
-    save_config
-    exit 0
+if [ -z "$PROXY_PORT" ]; then
+    echo "未提供端口，且默认端口为空"
+    return 1
 fi
 
-# 组合代理地址
 PROXY_ADDR="${PROXY_IP}:${PROXY_PORT}"
-echo "设置代理地址为: $PROXY_ADDR"
 
-# 设置代理环境变量
 export http_proxy="http://$PROXY_ADDR"
 export https_proxy="http://$PROXY_ADDR"
 export all_proxy="socks5://$PROXY_ADDR"
 
-# echo "已设置代理环境变量:"
-# echo "http_proxy=$http_proxy"
-# echo "https_proxy=$https_proxy"
-# echo "all_proxy=$all_proxy"
-
-# 提示用户当前会话已启用代理
-echo ""
+echo "已设置代理: $PROXY_ADDR"
 echo "当前会话已启用代理。关闭当前终端或重新登录后，代理设置将失效。"
 echo "您可以通过运行以下命令检查代理是否工作:"
 echo "curl -I https://www.google.com"
-
-

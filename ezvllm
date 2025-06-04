@@ -3,7 +3,6 @@
 # 版本信息
 VERSION="1.1.0"
 
-# 默认参数值
 ENV_NAME="vllm"
 GPU_ID="0"
 MODEL_NAME="Qwen/Qwen3-4B"
@@ -22,17 +21,14 @@ CONFIG_FILE="$HOME/.config/ezvllm/config"
 config_load() {
   # 检查配置文件是否存在
   if [ -f "$CONFIG_FILE" ]; then
-    # echo "正在从 $CONFIG_FILE 加载配置..."
     
     # 从配置文件中读取参数
     while IFS='=' read -r key value; do
       # 跳过注释和空行
       [[ $key =~ ^#.*$ || -z $key ]] && continue
-      
       # 移除可能存在的引号
       value=$(echo "$value" | sed -e 's/^"//' -e 's/"$//' -e "s/^'//" -e "s/'$//")
       
-      # 根据键设置相应的变量
       case "$key" in
         ENV_NAME) ENV_NAME="$value" ;;
         GPU_ID) GPU_ID="$value" ;;
@@ -54,10 +50,8 @@ config_load() {
       esac
     done < "$CONFIG_FILE"
     
-    # echo "配置已加载"
   else
     echo "配置文件 $CONFIG_FILE 不存在，使用默认配置"
-    # 尝试创建配置目录和默认配置文件
     mkdir -p "$(dirname "$CONFIG_FILE")" 2>/dev/null
     if [ $? -eq 0 ]; then
       echo "# ezvllm 默认配置文件" > "$CONFIG_FILE"
