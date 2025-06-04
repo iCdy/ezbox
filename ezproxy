@@ -37,6 +37,7 @@ usage() {
     echo "  -v VERSION       显示版本信息"
     echo "  -g GIT           设置 Git 代理"
     echo "  -r RESET         取消代理设置"
+    echo "  -j JUPYTER       设置 Jupyter Notebook 代理"
     echo "  -h               显示此帮助信息"
     return 1
 }
@@ -49,6 +50,7 @@ save_port() {
 
 EXIT_AFTER_OPTS=false
 GIT_PROXY=false
+JUPYTER_PROXY=false
 while [ $# -gt 0 ]; do
     case "$1" in
         -i)
@@ -78,6 +80,10 @@ while [ $# -gt 0 ]; do
             ;;
         -g)
             GIT_PROXY=true
+            shift
+            ;;
+        -j)
+            JUPYTER_PROXY=true
             shift
             ;;
         -h)
@@ -114,13 +120,23 @@ fi
 
 PROXY_ADDR="${PROXY_IP}:${PROXY_PORT}"
 
-if [ -n "$GIT_PROXY" ]; then
+if [ "$GIT_PROXY" = "true" ]; then
     git config --global http.proxy "http://$PROXY_ADDR"
     git config --global https.proxy "http://$PROXY_ADDR"
     echo "已设置 Git 代理: $PROXY_ADDR"
     echo "请注意，Git 代理设置不会影响其他命令行工具。"
     return 0
 fi
+
+if [ "$JUPYTER_PROXY" = "true" ]; then
+    echo "jupyter 需要手动设置代理，请在代码块中加入以下内容:"
+    echo ""
+    echo "import os"
+    echo "os.environ['http_proxy'] = 'http://$PROXY_ADDR'"
+    echo "os.environ['https_proxy'] = 'http://$PROXY_ADDR'"
+    echo "os.environ['all_proxy'] = 'socks5://$PROXY_ADDR'"
+    return 0
+fi  
 
 export http_proxy="http://$PROXY_ADDR"
 export https_proxy="http://$PROXY_ADDR"
