@@ -16,8 +16,8 @@
 
 | 工具名称 | 描述 | 文档 | 依赖 |
 |---------|------|------|------|
-| [ezvllm](#ezvllm) | `vLLM` 服务管理工具 | [使用指南](USAGE.md) | `Conda`, `vLLM` |
-| [ezproxy](#ezproxy) | 代理设置管理工具 | 下方说明 | `SSH` (可选) |
+| [ezvllm](#ezvllm) | `vLLM` 服务管理工具 | [使用指南](USAGE.md#ezvllm---vllm-服务管理工具) | `Conda`, `vLLM` |
+| [ezproxy](#ezproxy) | 代理设置管理工具 | [使用指南](USAGE.md#ezproxy---代理设置管理工具) | `SSH` (可选) |
 
 ### ezvllm
 
@@ -29,7 +29,7 @@
 - 灵活的配置管理
 - 服务状态检查
 
-**详细使用说明:** [查看完整使用指南](USAGE.md)
+**详细使用说明:** [查看完整使用指南](USAGE.md#ezvllm---vllm-服务管理工具)
 
 **QuickStart:**
 ```bash
@@ -64,7 +64,8 @@ ezvllm config param
 - 快速切换不同的代理配置
 - 临时启用网络代理进行特定操作
 
-**快速使用:**
+**详细使用说明:** [查看完整使用指南](USAGE.md#ezproxy---代理设置管理工具)
+**QuickStart:**
 ```bash
 # 使用默认端口设置代理（自动检测SSH客户端IP）
 source ezproxy
