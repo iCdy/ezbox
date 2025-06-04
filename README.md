@@ -7,6 +7,7 @@
   - [目录](#目录)
   - [工具列表](#工具列表)
     - [ezvllm](#ezvllm)
+    - [ezproxy](#ezproxy)
   - [安装](#安装)
   - [系统要求](#系统要求)
   - [许可](#许可)
@@ -16,6 +17,7 @@
 | 工具名称 | 描述 | 文档 | 依赖 |
 |---------|------|------|------|
 | [ezvllm](#ezvllm) | `vLLM` 服务管理工具 | [使用指南](USAGE.md) | `Conda`, `vLLM` |
+| [ezproxy](#ezproxy) | 代理设置管理工具 | 下方说明 | `SSH` (可选) |
 
 ### ezvllm
 
@@ -45,6 +47,49 @@ ezvllm config show
 ezvllm config set MODEL_NAME="Qwen/Qwen3-4B"
 ezvllm config param
 ```
+
+### ezproxy
+
+一个便捷的代理设置管理工具，帮助你快速配置和管理终端的网络代理设置。
+
+**主要功能:**
+- 自动检测 SSH 客户端 IP 作为代理地址
+- 灵活的端口配置和管理
+- 支持 HTTP/HTTPS/SOCKS5 代理设置
+- 配置文件持久化存储
+- 一键取消代理设置
+
+**使用场景:**
+- 通过 SSH 连接到远程服务器时自动配置代理
+- 快速切换不同的代理配置
+- 临时启用网络代理进行特定操作
+
+**快速使用:**
+```bash
+# 使用默认端口设置代理（自动检测SSH客户端IP）
+source ezproxy
+
+# 指定IP和端口设置代理
+source ezproxy -i 192.168.1.100 -p 8080
+
+# 设置默认端口（保存到配置文件）
+source ezproxy -d 1080
+
+# 取消代理设置
+source ezproxy -r
+
+# 查看版本信息
+source ezproxy -v
+
+# 查看帮助信息
+source ezproxy -h
+```
+
+**注意事项:**
+- 必须使用 `source` 命令执行此脚本
+- 代理设置仅在当前终端会话中有效
+- 配置文件保存在 `~/.config/ezproxy/config`
+
 
 ## 安装
 
