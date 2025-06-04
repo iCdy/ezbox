@@ -1,6 +1,6 @@
 #! /bin/bash
 
-VERSION="2.1.0"
+VERSION="2.2.0"
 
 PROXY_IP=""
 PROXY_PORT="1080"
@@ -35,6 +35,7 @@ usage() {
     echo "  -p PORT          设置代理端口号 (默认: $PROXY_PORT)"
     echo "  -d DEFAULT_PORT  设置默认端口号 (当前: $PROXY_PORT)"
     echo "  -v VERSION       显示版本信息"
+    echo "  -g GIT           设置 Git 代理"
     echo "  -r RESET         取消代理设置"
     echo "  -h               显示此帮助信息"
     return 1
@@ -47,7 +48,7 @@ save_port() {
 
 
 EXIT_AFTER_OPTS=false
-
+GIT_PROXY=false
 while [ $# -gt 0 ]; do
     case "$1" in
         -i)
@@ -74,6 +75,10 @@ while [ $# -gt 0 ]; do
             echo "已取消代理设置"
             EXIT_AFTER_OPTS=true
             return 0
+            ;;
+        -g)
+            GIT_PROXY=true
+            shift
             ;;
         -h)
             usage
@@ -108,6 +113,14 @@ if [ -z "$PROXY_PORT" ]; then
 fi
 
 PROXY_ADDR="${PROXY_IP}:${PROXY_PORT}"
+
+if [ -n "$GIT_PROXY" ]; then
+    git config --global http.proxy "http://$PROXY_ADDR"
+    git config --global https.proxy "http://$PROXY_ADDR"
+    echo "已设置 Git 代理: $PROXY_ADDR"
+    echo "请注意，Git 代理设置不会影响其他命令行工具。"
+    return 0
+fi
 
 export http_proxy="http://$PROXY_ADDR"
 export https_proxy="http://$PROXY_ADDR"
