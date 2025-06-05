@@ -88,6 +88,9 @@ source ezproxy -j
 # 取消代理设置
 source ezproxy -r
 
+# 取消 Git 代理
+source ezproxy -g -r
+
 # 查看版本信息
 source ezproxy -v
 

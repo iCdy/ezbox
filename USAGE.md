@@ -32,6 +32,8 @@
     - [场景 1：SSH 远程开发](#场景-1ssh-远程开发)
     - [场景 2：办公网络代理配置](#场景-2办公网络代理配置)
     - [场景 3：临时代理任务](#场景-3临时代理任务)
+    - [场景 4：Git 专用代理](#场景-4git-专用代理)
+    - [场景 5：Jupyter Notebook 代理配置](#场景-5jupyter-notebook-代理配置)
   - [疑难解答](#疑难解答-1)
 
 ---
@@ -70,6 +72,8 @@
     - [场景 1：SSH 远程开发](#场景-1ssh-远程开发)
     - [场景 2：办公网络代理配置](#场景-2办公网络代理配置)
     - [场景 3：临时代理任务](#场景-3临时代理任务)
+    - [场景 4：Git 专用代理](#场景-4git-专用代理)
+    - [场景 5：Jupyter Notebook 代理配置](#场景-5jupyter-notebook-代理配置)
   - [疑难解答](#疑难解答-1)
 
 ## 安装
@@ -360,6 +364,8 @@ ezvllm chat -p 8002
     - [场景 1：SSH 远程开发](#场景-1ssh-远程开发)
     - [场景 2：办公网络代理配置](#场景-2办公网络代理配置)
     - [场景 3：临时代理任务](#场景-3临时代理任务)
+    - [场景 4：Git 专用代理](#场景-4git-专用代理)
+    - [场景 5：Jupyter Notebook 代理配置](#场景-5jupyter-notebook-代理配置)
   - [疑难解答](#疑难解答-1)
 
 ## 安装
@@ -557,8 +563,7 @@ git config --global --get http.proxy
 git config --global --get https.proxy
 
 # 取消 Git 代理设置
-git config --global --unset http.proxy
-git config --global --unset https.proxy
+source ezproxy -g -r
 ```
 
 ### 场景 5：Jupyter Notebook 代理配置
