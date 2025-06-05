@@ -398,6 +398,12 @@ source ezproxy -i IP地址 -p 端口号
 # 设置默认端口
 source ezproxy -d 端口号
 
+# 设置 Git 代理
+source ezproxy -g
+
+# 设置 Jupyter Notebook 代理（显示设置代码）
+source ezproxy -j
+
 # 取消代理设置
 source ezproxy -r
 ```
@@ -453,12 +459,20 @@ source ezproxy -d 8080
 **选项：**
 
 - `-r` - 取消当前会话的代理设置
+- `-g` - 设置 Git 代理（仅影响 Git 操作）
+- `-j` - 显示 Jupyter Notebook 代理设置代码
 - `-v` - 显示版本信息
 - `-h` - 显示帮助信息
 
 ```bash
 # 取消代理设置
 source ezproxy -r
+
+# 设置 Git 代理（仅影响 Git 操作）
+source ezproxy -g
+
+# 显示 Jupyter Notebook 代理设置代码
+source ezproxy -j
 
 # 查看版本
 source ezproxy -v
@@ -526,6 +540,45 @@ wget https://files.example.com/file.zip
 source ezproxy -r
 ```
 
+### 场景 4：Git 专用代理
+
+当你只需要为 Git 操作设置代理，而不影响其他命令行工具时：
+
+```bash
+# 设置 Git 专用代理
+source ezproxy -g
+
+# Git 操作将通过代理进行
+git clone https://github.com/user/repo.git
+git push origin main
+
+# 检查 Git 代理设置
+git config --global --get http.proxy
+git config --global --get https.proxy
+
+# 取消 Git 代理设置
+git config --global --unset http.proxy
+git config --global --unset https.proxy
+```
+
+### 场景 5：Jupyter Notebook 代理配置
+
+在 Jupyter Notebook 中需要通过代理访问网络资源时：
+
+```bash
+# 显示 Jupyter 代理设置代码
+source ezproxy -j
+```
+
+这会输出以下代码，你需要在 Jupyter Notebook 的代码单元中运行：
+
+```python
+import os
+os.environ['http_proxy'] = 'http://192.168.1.100:1080'
+os.environ['https_proxy'] = 'http://192.168.1.100:1080'
+os.environ['all_proxy'] = 'socks5://192.168.1.100:1080'
+```
+
 
 ## 疑难解答
 
@@ -577,11 +630,11 @@ unset http_proxy https_proxy all_proxy
 # 或者重新登录终端会话
 ```
 
-**免责声明：**
+**免责声明:**
 本工具 ezproxy 仅用于设置系统环境中的代理变量（如 http_proxy、https_proxy 等），不提供任何代理服务，也不包含任何绕过网络审查、翻墙或访问被屏蔽网站的功能。用户应在合法合规的网络环境下使用本工具，遵守所在国家和地区的法律法规。
 若将本工具用于违法用途，责任由使用者本人承担。
 
-**用途说明：**
+**用途说明:**
 本工具 `ezproxy` 仅用于在受控网络环境下快速配置系统代理变量（如 http_proxy、https_proxy、all_proxy），适用于以下典型场景：
 
 1. 通过 SSH 登录远程开发主机时，根据 SSH 客户端 IP 自动设置本地代理；
@@ -594,13 +647,13 @@ unset http_proxy https_proxy all_proxy
     export http_proxy=http://IP:PORT
     export https_proxy=http://IP:PORT
 
-**重要提醒**：
+**重要提醒:**
 - 本工具仅用于合法的网络配置管理，请勿将其用于访问被限制的网站或服务
 - 使用本工具时，请确保你所连接的代理服务器是合法、合规的
 - 在中国大陆地区使用时，请严格遵守《网络安全法》、《数据安全法》等相关法律法规
 - 如有疑问，请咨询相关法律专业人士
 
-**适用场景限制**：
+**适用场景限制:**
 本工具适用于以下合规场景：
 - 企业内网开发环境的代理配置
 - 学术研究机构的网络配置管理  
