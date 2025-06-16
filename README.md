@@ -57,15 +57,19 @@ ezvllm config param
 - 灵活的端口配置和管理
 - 支持 HTTP/HTTPS/SOCKS5 代理设置
 - 支持 Git 和 Jupyter Notebook 专用代理配置
+- 支持 VSCode 编辑器代理配置
 - 配置文件持久化存储
 - 一键取消代理设置
+- 快速检查当前代理状态
 
 **使用场景:**
 - 通过 SSH 连接到远程服务器时自动配置代理
 - 快速切换不同的代理配置
 - 为 Git 操作单独配置代理
 - 在 Jupyter Notebook 中设置代理环境
+- 为 VSCode 编辑器配置网络代理
 - 临时启用网络代理进行特定操作
+- 快速检查当前系统代理状态
 
 **详细使用说明:** [查看完整使用指南](USAGE.md#ezproxy---代理设置管理工具)
 **QuickStart:**
@@ -79,6 +83,12 @@ source ezproxy -i 192.168.1.100 -p 8080
 # 设置默认端口（保存到配置文件）
 source ezproxy -d 1080
 
+# 检查当前代理设置
+source ezproxy -c
+
+# 设置 VSCode 代理
+source ezproxy -e
+
 # 设置 Git 代理
 source ezproxy -g
 
@@ -90,6 +100,9 @@ source ezproxy -r
 
 # 取消 Git 代理
 source ezproxy -g -r
+
+# 取消 VSCode 代理
+source ezproxy -e -r
 
 # 查看版本信息
 source ezproxy -v

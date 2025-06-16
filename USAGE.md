@@ -334,6 +334,12 @@ source ezproxy -i IP地址 -p 端口号
 # 设置默认端口
 source ezproxy -d 端口号
 
+# 检查当前代理设置
+source ezproxy -c
+
+# 设置 VSCode 代理
+source ezproxy -e
+
 # 设置 Git 代理
 source ezproxy -g
 
@@ -394,6 +400,8 @@ source ezproxy -d 8080
 
 **选项：**
 
+- `-c` - 检查并输出当前代理设置
+- `-e` - 设置 VSCode 编辑器代理配置
 - `-r` - 取消当前会话的代理设置
 - `-g` - 设置 Git 代理（仅影响 Git 操作）
 - `-j` - 显示 Jupyter Notebook 代理设置代码
@@ -401,6 +409,12 @@ source ezproxy -d 8080
 - `-h` - 显示帮助信息
 
 ```bash
+# 检查当前代理设置
+source ezproxy -c
+
+# 设置 VSCode 代理
+source ezproxy -e
+
 # 取消代理设置
 source ezproxy -r
 
@@ -496,7 +510,40 @@ git config --global --get https.proxy
 source ezproxy -g -r
 ```
 
-### 场景 5：Jupyter Notebook 代理配置
+### 场景 5：VSCode 编辑器代理配置
+
+当你需要为 VSCode 编辑器设置代理以访问扩展市场或同步设置时：
+
+```bash
+# 设置 VSCode 代理
+source ezproxy -e
+
+# 这将自动更新 VSCode 的 settings.json 文件
+# 重启 VSCode 后代理配置即可生效
+
+# 取消 VSCode 代理设置
+source ezproxy -e -r
+
+# 检查当前 VSCode 代理配置是否生效
+# 可在 VSCode 中按 Ctrl+Shift+P，输入 "Preferences: Open Settings (JSON)"
+# 查看 settings.json 中的 http.proxy 和 https.proxy 设置
+```
+
+### 场景 6：代理状态检查
+
+快速检查当前系统的代理设置状态：
+
+```bash
+# 检查当前所有代理环境变量
+source ezproxy -c
+
+# 这会显示类似以下的输出：
+# http_proxy=http://192.168.1.100:1080
+# https_proxy=http://192.168.1.100:1080
+# all_proxy=socks5://192.168.1.100:1080
+```
+
+### 场景 7：Jupyter Notebook 代理配置
 
 在 Jupyter Notebook 中需要通过代理访问网络资源时：
 
@@ -563,6 +610,37 @@ source ezproxy -d 1080
 unset http_proxy https_proxy all_proxy
 
 # 或者重新登录终端会话
+```
+
+**VSCode 代理设置问题：**
+
+```bash
+# 检查 VSCode settings.json 文件是否存在
+ls -la ~/.vscode-server/data/Machine/settings.json
+
+# 检查是否安装了 jq 工具（用于处理 JSON）
+which jq
+
+# 如果没有 jq，可以手动编辑 settings.json
+# 添加或删除以下内容：
+# "http.proxy": "http://IP:PORT",
+# "https.proxy": "http://IP:PORT",
+```
+
+**代理状态检查：**
+
+```bash
+# 使用 -c 参数检查所有代理设置
+source ezproxy -c
+
+# 手动检查特定环境变量
+echo $http_proxy
+echo $https_proxy
+echo $all_proxy
+
+# 检查 Git 代理设置
+git config --global --get http.proxy
+git config --global --get https.proxy
 ```
 
 **免责声明:**

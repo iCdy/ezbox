@@ -4,6 +4,7 @@ VERSION="2.3.0"
 
 PROXY_IP=""
 PROXY_PORT="1080"
+SETTINGS_FILE="$HOME/.vscode-server/data/Machine/settings.json"
 
 if [ "$0" = "$BASH_SOURCE" ]; then
     echo "警告: 此脚本应该使用 'source' 命令执行，例如: source $(basename "$0")"
@@ -31,6 +32,8 @@ fi
 usage() {
     echo "用法: source ezproxy [-i IP] [-p PORT] [-d DEFAULT_PORT]"
     echo "选项:"
+    echo "  -c CHECK         输出当前代理设置"
+    echo "  -e VSCODE        设置VSCode代理(默认: $PROXY_PORT)"
     echo "  -i IP            设置代理IP地址 (默认: SSH客户端IP)"
     echo "  -p PORT          设置代理端口号 (默认: $PROXY_PORT)"
     echo "  -d DEFAULT_PORT  设置默认端口号 (当前: $PROXY_PORT)"
@@ -52,9 +55,20 @@ EXIT_AFTER_OPTS=false
 GIT_PROXY=false
 JUPYTER_PROXY=false
 UNSET_PROXY=false
+VSCODE_PROXY=false
 
 while [ $# -gt 0 ]; do
     case "$1" in
+        -c)
+            echo "当前代理设置:"
+            env | grep -i proxy
+            EXIT_AFTER_OPTS=true
+            return 0
+            ;;
+        -e)
+            VSCODE_PROXY=true
+            shift
+            ;;
         -i)
             PROXY_IP="$2"
             shift 2
@@ -104,12 +118,26 @@ if [ "$EXIT_AFTER_OPTS" = true ]; then
     return 0
 fi
 
+
+
 if [ "$UNSET_PROXY" = true ]; then
     if [ "$GIT_PROXY" = true ]; then
         git config --global --unset http.proxy
         git config --global --unset https.proxy
         echo "已取消 Git 代理设置"
         return 0
+    elif [ "$VSCODE_PROXY" = true ]; then
+        if command -v jq &> /dev/null; then
+            jq 'del(.["http.proxy"], .["https.proxy"])' "$SETTINGS_FILE" > temp.json && mv temp.json "$SETTINGS_FILE"
+            echo "代理设置已从 VS Code settings.json 中删除"
+            echo "请重启 VS Code 以使更改生效[可使用快捷键：Ctrl(Cmd)+Shift+P，输入 Reload Window]"
+            return 0
+        else
+            echo "jq 命令未找到，无法自动更新 VS Code settings.json"
+            echo "请手动将代理内容从 $SETTINGS_FILE 中删除"
+            echo "请重启 VS Code 以使更改生效[可使用快捷键：Ctrl(Cmd)+Shift+P，输入 Reload Window]"
+            return 1
+        fi
     else
         unset http_proxy https_proxy all_proxy
         echo "已取消全局代理设置"
@@ -132,6 +160,31 @@ if [ -z "$PROXY_PORT" ]; then
 fi
 
 PROXY_ADDR="${PROXY_IP}:${PROXY_PORT}"
+
+if [[ "$VSCODE_PROXY" = true && "$UNSET_PROXY" = false ]]; then
+    if [ ! -f "$SETTINGS_FILE" ]; then
+        echo "错误：settings.json 文件不存在: $SETTINGS_FILE"
+        return 1
+    fi
+
+    cp "$SETTINGS_FILE" "$SETTINGS_FILE.bak"
+
+    if command -v jq &> /dev/null; then
+        jq --arg proxy "http://$PROXY_ADDR" '. + {"http.proxy": $proxy, "https.proxy": $proxy}' "$SETTINGS_FILE" > temp.json && mv temp.json "$SETTINGS_FILE"
+        echo "代理设置已更新到 VS Code settings.json"
+        echo "请重启 VS Code 以使更改生效[可使用快捷键：Ctrl(Cmd)+Shift+P，输入 Reload Window]"
+        return 0
+    else
+        echo "jq 命令未找到，无法自动更新 VS Code settings.json"
+        echo "请手动将以下内容添加到 $SETTINGS_FILE:"
+        echo "\"http.proxy\": \"http://$PROXY_IP:$PROXY_PORT\","
+        echo "\"https.proxy\": \"http://$PROXY_IP:$PROXY_PORT\","
+        echo "请重启 VS Code 以使更改生效[可使用快捷键：Ctrl(Cmd)+Shift+P，输入 Reload Window]"
+        return 1
+    fi
+    
+
+fi
 
 if [ "$GIT_PROXY" = "true" ]; then
     git config --global http.proxy "http://$PROXY_ADDR"
