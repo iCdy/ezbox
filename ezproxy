@@ -1,6 +1,6 @@
 #! /bin/bash
 
-VERSION="2.3.0"
+VERSION="2.4.0"
 
 PROXY_IP=""
 PROXY_PORT="1080"
