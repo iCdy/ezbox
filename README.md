@@ -17,7 +17,7 @@
 | 工具名称 | 描述 | 文档 | 依赖 |
 |---------|------|------|------|
 | [ezvllm](#ezvllm) | `vLLM` 服务管理工具 | [使用指南](USAGE.md#ezvllm---vllm-服务管理工具) | `Conda`, `vLLM` |
-| [ezproxy](#ezproxy) | 代理设置管理工具 | [使用指南](USAGE.md#ezproxy---代理设置管理工具) | `SSH` (可选) |
+| [ezproxy](#ezproxy) | 代理设置管理工具 | [使用指南](USAGE.md#ezproxy---代理设置管理工具) | `SSH`,`jq` |
 
 ### ezvllm
 
