@@ -19,10 +19,7 @@ CONFIG_FILE="$HOME/.config/ezvllm/config"
 
 # 加载配置文件函数
 config_load() {
-  # 检查配置文件是否存在
   if [ -f "$CONFIG_FILE" ]; then
-    
-    # 从配置文件中读取参数
     while IFS='=' read -r key value; do
       # 跳过注释和空行
       [[ $key =~ ^#.*$ || -z $key ]] && continue
@@ -156,7 +153,6 @@ show_chat_help() {
 # 加载配置文件
 config_load
 
-# 解析命令
 if [[ $# -gt 0 ]]; then
   case "$1" in
     serve)
@@ -200,7 +196,6 @@ if [[ $# -gt 0 ]]; then
     *)
       # 如果没有指定命令，默认为serve
       COMMAND="serve"
-      # 不需要shift，因为当前参数可能是选项
       ;;
   esac
 else
@@ -208,10 +203,8 @@ else
   COMMAND="serve"
 fi
 
-# 根据命令解析参数
 case "$COMMAND" in
   serve)
-    # 解析serve命令的参数
     while [[ $# -gt 0 ]]; do
       case $1 in
         -e|--env-name)
@@ -250,7 +243,6 @@ case "$COMMAND" in
           # 收集剩余所有参数作为VLLM参数
           shift
           VLLM_EXTRA_ARGS="$*"
-          # 由于已经处理了所有参数，直接跳出循环
           break
           ;;
         -h|--help)
@@ -264,7 +256,6 @@ case "$COMMAND" in
     done
     ;;
   check)
-    # 解析check命令的参数
     TEST_MODE=false
     INFO_MODE=false
     while [[ $# -gt 0 ]]; do
@@ -300,40 +291,31 @@ case "$COMMAND" in
     done
     ;;
   config)
-    # 解析config命令的参数
     while [[ $# -gt 0 ]]; do
       case $1 in
         show)
-          # 显示当前配置
           echo "当前配置:"
           cat "$CONFIG_FILE"
           exit 0
           ;;
         edit)
-          # 编辑配置文件
           ${EDITOR:-vim} "$CONFIG_FILE"
           exit 0
           ;;
         set)
-          # 设置配置项
           if [[ $# -lt 2 ]]; then
             echo "用法: ezvllm config set KEY=VALUE"
             exit 1
           fi
-          # 提取键值对
           IFS='=' read -r key value <<< "$2"
           # 更新配置文件
           if [ -f "$CONFIG_FILE" ]; then
-            # 如果配置文件存在
             if grep -q "^$key=" "$CONFIG_FILE"; then
-              # 如果键存在，更新对应的值
               sed -i "s/^$key=.*/$key=$value/" "$CONFIG_FILE"
             else
-              # 如果键不存在，添加新配置
               echo "$key=$value" >> "$CONFIG_FILE"
             fi
           else
-            # 如果配置文件不存在，创建配置目录和文件并添加新配置
             mkdir -p "$(dirname "$CONFIG_FILE")" 2>/dev/null
             echo "# ezvllm 默认配置文件" > "$CONFIG_FILE"
             echo "$key=$value" >> "$CONFIG_FILE"
@@ -347,16 +329,12 @@ case "$COMMAND" in
             echo "用法: ezvllm config unset KEY"
             exit 1
           fi
-          # 获取要移除的键
           key="$2"
-          # 检查配置文件是否存在
           if [ ! -f "$CONFIG_FILE" ]; then
             echo "错误: 配置文件不存在"
             exit 1
           fi
-          # 检查键是否存在于配置文件中
           if grep -q "^$key=" "$CONFIG_FILE"; then
-            # 如果键存在，移除该行
             sed -i "/^$key=/d" "$CONFIG_FILE"
             echo "已移除配置项: $key"
           else
@@ -366,7 +344,6 @@ case "$COMMAND" in
           exit 0
           ;;
         param)
-          # 显示所有可用的配置参数
           echo "可用的配置参数:"
           echo "  ENV_NAME              - Python虚拟环境名称 (默认: $ENV_NAME)"
           echo "  GPU_ID                - 使用的GPU ID (默认: $GPU_ID)"
@@ -392,7 +369,6 @@ case "$COMMAND" in
     done
     ;;
   chat)
-    # 解析chat命令的参数
     SINGLE_MODE=false
     while [[ $# -gt 0 ]]; do
       case $1 in
@@ -437,7 +413,6 @@ case "$COMMAND" in
 esac
 
 
-# 检查模型函数
 check_running_model() {
   local port="$1"
   local api_key="$2"
@@ -450,7 +425,6 @@ check_running_model() {
     return 1
   fi
   
-# 尝试通过API获取模型信息
   echo "发送 API 请求到 http://localhost:$port..."
   model_info=$(curl -s -X GET "http://localhost:$port/v1/models" \
     -H "Authorization: Bearer $api_key" \
@@ -551,7 +525,6 @@ fi
 
 # 如果指定了chat命令，则启动聊天
 if [ "$COMMAND" = "chat" ]; then
-  # 检查服务是否运行
   if ! netstat -tuln | grep -q ":$PORT "; then
     echo "错误: 端口 $PORT 上没有运行服务，请先启动服务"
     exit 1
@@ -617,12 +590,10 @@ if [ "$COMMAND" = "chat" ]; then
   fi
   
   # 多轮对话模式
-  # 添加用户消息(如果提供)
   if [ -n "$USER_PROMPT" ]; then
     MESSAGES=$(echo "$MESSAGES" | jq --arg prompt "$USER_PROMPT" \
       '. + [{"role": "user", "content": $prompt}]')
     
-    # 如果提供了USER_PROMPT，直接发送第一个请求
     echo "发送初始请求..."
     RESPONSE=$(curl -s -X POST "http://localhost:$PORT/v1/chat/completions" \
       -H "Authorization: Bearer $API_KEY" \
@@ -667,9 +638,6 @@ if [ "$COMMAND" = "chat" ]; then
       exit 0
     fi
     
-    # 不再需要手动转义用户输入，jq 会处理
-    # USER_INPUT 直接传递给 jq
-    
     # 添加用户消息到消息数组
     MESSAGES=$(echo "$MESSAGES" | jq --arg content "$USER_INPUT" \
       '. + [{"role": "user", "content": $content}]')
@@ -709,7 +677,6 @@ if [ "$COMMAND" = "chat" ]; then
   exit 0
 fi
 
-# 如果是serve命令（默认），则启动服务
 echo "正在使用以下配置:"
 echo "conda环境: $ENV_NAME"
 echo "GPU ID: $GPU_ID"
@@ -720,30 +687,23 @@ echo "最大模型长度: ${MAX_MODEL_LEN:-不限制}"
 echo "GPU使用率: $GPU_UTIL"
 echo "禁用function call: $DISABLE_FUNCTION_CALL"
 
-# 激活conda环境
-# 注意：根据你的conda设置，可能需要先source conda的初始化脚本
 source ~/miniconda3/etc/profile.d/conda.sh || source ~/anaconda3/etc/profile.d/conda.sh
 conda activate $ENV_NAME
 
-# 设置环境变量
 export CUDA_VISIBLE_DEVICES="$GPU_ID"
 export TRANSFORMERS_OFFLINE="1"
 export HF_HUB_OFFLINE="1"
 
-# 构建基本vllm命令
 CMD="vllm serve \"$MODEL_NAME\" --port $PORT --api-key $API_KEY --gpu-memory-utilization $GPU_UTIL"
 
-# 如果指定了最大模型长度，则添加对应参数
 if [ -n "$MAX_MODEL_LEN" ]; then
   CMD="$CMD --max-model-len $MAX_MODEL_LEN"
 fi
 
-# 根据是否禁用function call添加相应选项
 if [ "$DISABLE_FUNCTION_CALL" = false ]; then
   CMD="$CMD --enable-auto-tool-choice --tool-call-parser hermes"
 fi
 
-# 添加额外的VLLM参数（如果有）
 if [ -n "$VLLM_EXTRA_ARGS" ]; then
   CMD="$CMD $VLLM_EXTRA_ARGS"
 fi

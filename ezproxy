@@ -1,6 +1,6 @@
 #! /bin/bash
 
-VERSION="2.4.0"
+VERSION="2.4.1"
 
 PROXY_IP=""
 PROXY_PORT="1080"
@@ -163,17 +163,25 @@ PROXY_ADDR="${PROXY_IP}:${PROXY_PORT}"
 
 if [[ "$VSCODE_PROXY" = true && "$UNSET_PROXY" = false ]]; then
     if [ ! -f "$SETTINGS_FILE" ]; then
-        echo "错误：settings.json 文件不存在: $SETTINGS_FILE"
-        return 1
+        echo "settings.json 文件不存在，正在创建: $SETTINGS_FILE"
+        mkdir -p "$(dirname "$SETTINGS_FILE")"
+        echo "{}" > "$SETTINGS_FILE"
     fi
 
     cp "$SETTINGS_FILE" "$SETTINGS_FILE.bak"
 
     if command -v jq &> /dev/null; then
-        jq --arg proxy "http://$PROXY_ADDR" '. + {"http.proxy": $proxy, "https.proxy": $proxy}' "$SETTINGS_FILE" > temp.json && mv temp.json "$SETTINGS_FILE"
-        echo "代理设置已更新到 VS Code settings.json"
-        echo "请重启 VS Code 以使更改生效[可使用快捷键：Ctrl(Cmd)+Shift+P，输入 Reload Window]"
-        return 0
+        if jq --arg proxy "http://$PROXY_ADDR" '. + {"http.proxy": $proxy, "https.proxy": $proxy}' "$SETTINGS_FILE" > temp.json 2>/dev/null && mv temp.json "$SETTINGS_FILE"; then
+            echo "代理设置已更新到 VS Code settings.json"
+            echo "请重启 VS Code 以使更改生效[可使用快捷键：Ctrl(Cmd)+Shift+P，输入 Reload Window]"
+            return 0
+        else
+            echo "错误：VS Code settings.json 文件格式有问题，无法解析 JSON"
+            echo "请检查并修复文件格式: $SETTINGS_FILE"
+            echo "或者删除该文件让系统重新创建: rm \"$SETTINGS_FILE\""
+            rm -f temp.json 2>/dev/null
+            return 1
+        fi
     else
         echo "jq 命令未找到，无法自动更新 VS Code settings.json"
         echo "请手动将以下内容添加到 $SETTINGS_FILE:"
