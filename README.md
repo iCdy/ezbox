@@ -72,6 +72,7 @@ ezvllm config param
 - 快速检查当前系统代理状态
 
 **详细使用说明:** [查看完整使用指南](USAGE.md#ezproxy---代理设置管理工具)
+
 **QuickStart:**
 ```bash
 # 使用默认端口设置代理（自动检测SSH客户端IP）
@@ -153,9 +154,31 @@ cd shell
 
 安装脚本会:
 1. 创建 `~/bin` 目录（如果不存在）
-2. 将工具脚本复制到该目录
+2. 将所有工具脚本复制到该目录
 3. 添加 `~/bin` 到你的 PATH 环境变量（自动检测 bash 和 zsh）
 4. 设置正确的执行权限
+
+默认安装所有脚本，如果想安装指定脚本，请修改`init.sh`中下面的部分，将不想要安装的脚本注释掉：
+```
+# 将指定脚本复制到 bin 目录
+cp  ./ezvllm $HOME/bin
+cp  ./ezproxy $HOME/bin
+
+# 赋予脚本执行权限
+chmod +x $HOME/bin/ezvllm
+chmod +x $HOME/bin/ezproxy
+```
+
+例如不想安装`ezproxy`:
+```
+# 将指定脚本复制到 bin 目录
+cp  ./ezvllm $HOME/bin
+# cp  ./ezproxy $HOME/bin
+
+# 赋予脚本执行权限
+chmod +x $HOME/bin/ezvllm
+# chmod +x $HOME/bin/ezproxy
+```
 
 安装完成后，请运行 `source ~/.bashrc` 或 `source ~/.zshrc` 使环境变量生效。
 
