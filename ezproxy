@@ -1,6 +1,6 @@
 #! /bin/bash
 
-VERSION="2.4.1"
+VERSION="2.5.0"
 
 PROXY_IP=""
 PROXY_PORT="1080"
@@ -35,6 +35,7 @@ usage() {
     echo "  -c CHECK         输出当前代理设置"
     echo "  -e VSCODE        设置VSCode代理(默认: $PROXY_PORT)"
     echo "  -i IP            设置代理IP地址 (默认: SSH客户端IP)"
+    echo "  -l LOCAL_IP      设置本地IP地址 (127.0.0.1)"
     echo "  -p PORT          设置代理端口号 (默认: $PROXY_PORT)"
     echo "  -d DEFAULT_PORT  设置默认端口号 (当前: $PROXY_PORT)"
     echo "  -v VERSION       显示版本信息"
@@ -56,6 +57,7 @@ GIT_PROXY=false
 JUPYTER_PROXY=false
 UNSET_PROXY=false
 VSCODE_PROXY=false
+LOCAL_PROXY=false
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -72,6 +74,11 @@ while [ $# -gt 0 ]; do
         -i)
             PROXY_IP="$2"
             shift 2
+            ;;
+
+        -l)
+            LOCAL_PROXY=true
+            shift
             ;;
         -p)
             PROXY_PORT="$2"
@@ -143,6 +150,20 @@ if [ "$UNSET_PROXY" = true ]; then
         echo "已取消全局代理设置"
         return 0
     fi
+fi
+
+if [ "$LOCAL_PROXY" = true ]; then
+    PROXY_IP="127.0.0.1"
+    PROXY_ADDR="${PROXY_IP}:${PROXY_PORT}"
+    export http_proxy="http://$PROXY_ADDR"
+    export https_proxy="http://$PROXY_ADDR"
+    export all_proxy="socks5://$PROXY_ADDR"
+
+    echo "已设置代理: $PROXY_ADDR"
+    echo "当前会话已启用代理。关闭当前终端或重新登录后，代理设置将失效。"
+    echo "您可以通过运行以下命令检查代理是否工作:"
+    echo "curl -I https://www.google.com"
+    return 0
 fi
 
 if [ -z "$PROXY_IP" ]; then
