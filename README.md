@@ -7,6 +7,7 @@
   - [目录](#目录)
   - [工具列表](#工具列表)
     - [ezvllm](#ezvllm)
+    - [ezxref](#ezxref)
     - [ezproxy](#ezproxy)
   - [安装](#安装)
   - [系统要求](#系统要求)
@@ -18,6 +19,7 @@
 |---------|------|------|------|
 | [ezvllm](#ezvllm) | `vLLM` 服务管理工具 | [使用指南](USAGE.md#ezvllm---vllm-服务管理工具) | `Conda`, `vLLM` |
 | [ezproxy](#ezproxy) | 代理设置管理工具 | [使用指南](USAGE.md#ezproxy---代理设置管理工具) | `SSH`,`jq` |
+| [ezxref](#ezxref) | 智能文献引用转换工具 | [使用指南](USAGE.md#ezxref---智能文献引用转换工具) | `Python3` |
 
 ### ezvllm
 
@@ -46,6 +48,44 @@ ezvllm check -p 8009 -t
 ezvllm config show
 ezvllm config set MODEL_NAME="Qwen/Qwen3-4B"
 ezvllm config param
+```
+
+### ezxref
+
+一个智能的Word文档文献引用转换工具，能够自动将纯文本引用转换为交叉引用格式。
+
+**主要功能:**
+- 智能识别多种连续引用格式（如 [1,2]、[3-7]、[1、2] 等）
+- 自动转换为单独的交叉引用格式
+- 支持自动创建参考文献书签
+- 保持文档格式和结构完整性
+- 支持详细的转换信息输出
+
+**支持的引用格式:**
+- 逗号分隔：`[1,2]` → `[1][2]`
+- 范围格式：`[3-7]` → `[3][4][5][6][7]`
+- 中文标点：`[1、2]`、`[4，2]` → `[1][2]`、`[4][2]`
+- 混合格式：`[1-3,5]` → `[1][2][3][5]`
+- 复杂格式：`[2，4–6、8]` → `[2][4][5][6][8]`
+
+**详细使用说明:** [查看完整使用指南](USAGE.md#ezxref---智能文献引用转换工具)
+
+**QuickStart:**
+```bash
+# 转换Word文档中的引用
+ezxref 论文.docx
+
+# 指定输出文件名
+ezxref 论文.docx 论文_转换后.docx
+
+# 显示详细转换信息
+ezxref -i 论文.docx
+
+# 查看帮助信息
+ezxref -h
+
+# 查看版本信息
+ezxref -v
 ```
 
 ### ezproxy
@@ -80,6 +120,9 @@ source ezproxy
 
 # 指定IP和端口设置代理
 source ezproxy -i 192.168.1.100 -p 8080
+
+# 使用本地回环地址设置代理
+source ezproxy -l -p 8080
 
 # 设置默认端口（保存到配置文件）
 source ezproxy -d 1080
@@ -163,10 +206,12 @@ cd shell
 # 将指定脚本复制到 bin 目录
 cp  ./ezvllm $HOME/bin
 cp  ./ezproxy $HOME/bin
+cp  ./ezxref $HOME/bin
 
 # 赋予脚本执行权限
 chmod +x $HOME/bin/ezvllm
 chmod +x $HOME/bin/ezproxy
+chmod +x $HOME/bin/ezxref
 ```
 
 例如不想安装`ezproxy`:
@@ -174,10 +219,12 @@ chmod +x $HOME/bin/ezproxy
 # 将指定脚本复制到 bin 目录
 cp  ./ezvllm $HOME/bin
 # cp  ./ezproxy $HOME/bin
+cp  ./ezxref $HOME/bin
 
 # 赋予脚本执行权限
 chmod +x $HOME/bin/ezvllm
 # chmod +x $HOME/bin/ezproxy
+chmod +x $HOME/bin/ezxref
 ```
 
 安装完成后，请运行 `source ~/.bashrc` 或 `source ~/.zshrc` 使环境变量生效。
@@ -187,6 +234,7 @@ chmod +x $HOME/bin/ezvllm
 - `Linux` 或 `macOS` 系统
 - `Bash` 或 `Zsh shell`
 - 对于 `ezvllm`: 需要安装 `Conda` 和 `vLLM`
+- 对于 `ezxref`: 需要安装 `Python3`
 
 ## 许可
 
