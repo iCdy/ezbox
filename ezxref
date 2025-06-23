@@ -1,0 +1,509 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+import os
+import re
+import zipfile
+import tempfile
+import sys
+
+version = "1.1.0"
+is_information = False
+
+def convert_all_references_final(input_docx_path, output_docx_path=None):
+    """
+    最终版引用转换 - 确保XML结构完整性
+    """
+    if output_docx_path is None:
+        base_name = os.path.splitext(input_docx_path)[0]
+        output_docx_path = f"{base_name}_xref.docx"
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        extract_dir = os.path.join(temp_dir, 'docx_content')
+        
+        # 1. 解压docx文件
+        with zipfile.ZipFile(input_docx_path, 'r') as zip_ref:
+            zip_ref.extractall(extract_dir)
+        
+        # 2. 读取document.xml内容
+        document_xml_path = os.path.join(extract_dir, 'word', 'document.xml')
+        with open(document_xml_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+        
+        if is_information:
+            print("读取原始内容")
+        
+        # 3. 首先检测和转换连续引用格式
+        if is_information:
+            print("检测连续引用格式...")
+        consecutive_refs = detect_consecutive_references(content)
+        
+        if consecutive_refs:
+            if is_information:
+                print(f"发现 {len(consecutive_refs)} 个连续引用")
+            content, converted_count = convert_consecutive_to_individual(content, consecutive_refs)
+            if is_information:
+                print(f"成功转换 {converted_count} 个连续引用为单独引用")
+        else:
+            if is_information:
+                print("未发现连续引用格式")
+        
+        # 4. 查找所有[num]格式的引用，区分纯文本和交叉引用中的
+        references_found = set()
+        
+        # 首先找到所有[num]模式
+        all_matches = re.findall(r'\[(\d+)\]', content)
+        references_found.update(all_matches)
+        
+        # 检查已经存在的交叉引用中的引用编号
+        existing_refs = re.findall(r'REF _Ref\w+.*?\[(\d+)\]', content, re.DOTALL)
+        existing_ref_set = set(existing_refs)
+        
+        # 更精确地查找纯文本引用（不在交叉引用字段中的）
+        pure_text_refs = set()
+        
+        # 查找所有包含引用的<w:t>标签
+        for match in re.finditer(r'<w:t[^>]*>([^<]*)</w:t>', content):
+            text_content = match.group(1)
+            start_pos = match.start()
+            
+            # 检查这个文本中是否包含引用
+            ref_matches = re.findall(r'\[(\d+)\]', text_content)
+            if ref_matches:
+                # 检查这个<w:t>标签是否在交叉引用字段中
+                before_context = content[max(0, start_pos-500):start_pos]
+                
+                # 查找最近的fldChar
+                last_fld_begin = before_context.rfind('fldChar w:fldCharType="begin"')
+                last_fld_end = before_context.rfind('fldChar w:fldCharType="end"')
+                
+                # 如果最近的是end，或者没有找到任何fldChar，说明这不在交叉引用字段中
+                if last_fld_begin == -1 or (last_fld_end > last_fld_begin):
+                    for ref_num in ref_matches:
+                        pure_text_refs.add(ref_num)
+                    if is_information:
+                        print(f"检测到纯文本引用 {ref_matches} 在: {text_content}")
+        if is_information:
+            print(f"发现引用编号: {sorted(references_found, key=int)}")
+            print(f"已存在交叉引用: {sorted(existing_ref_set, key=int)}")
+            print(f"纯文本引用: {sorted(pure_text_refs, key=int)}")
+        
+        # 需要转换的是纯文本引用
+        new_references = pure_text_refs
+        if is_information:
+            print(f"需要转换的引用: {sorted(new_references, key=int)}")
+        
+        if not new_references:
+            if is_information:
+                print("没有发现需要转换的新引用")
+            # 直接复制原文件
+            with zipfile.ZipFile(output_docx_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+                for root, dirs, files in os.walk(extract_dir):
+                    for file in files:
+                        file_path = os.path.join(root, file)
+                        arcname = os.path.relpath(file_path, extract_dir)
+                        zipf.write(file_path, arcname)
+            return output_docx_path
+        
+        # 5. 为参考文献部分添加书签
+        bookmark_id_counter = 100
+        reference_bookmarks = {}
+        
+        # 找到参考文献标题位置
+        ref_title_match = re.search(r'<w:t>参考文献</w:t>', content)
+        
+        if not ref_title_match:
+            print("警告: 没有找到参考文献部分")
+            return None
+        
+        ref_start_pos = ref_title_match.end()
+        
+        # 查找参考文献段落（编号列表段落）
+        # 先找到参考文献部分可能使用的编号列表ID
+        # 动态确定搜索范围：查找下一个章节标题或文档结尾
+        next_section_pattern = r'<w:pStyle w:val="(?:Heading|标题|heading).*?"/>'
+        next_section_match = re.search(next_section_pattern, content[ref_start_pos:], re.IGNORECASE)
+        
+        if next_section_match:
+            # 如果找到下一个章节，只搜索到下一个章节开始
+            search_end = ref_start_pos + next_section_match.start()
+            ref_section_content = content[ref_start_pos:search_end]
+        else:
+            # 如果没有找到下一个章节，搜索到文档结尾，但限制最大长度避免性能问题
+            max_search_length = min(200000, len(content) - ref_start_pos)  # 最多搜索200000字符
+            ref_section_content = content[ref_start_pos:ref_start_pos + max_search_length]
+        if is_information:
+            print(f"参考文献部分搜索范围: {len(ref_section_content)} 字符")
+        numid_matches = re.findall(r'<w:numId w:val="(\d+)"/>', ref_section_content)
+        
+        if numid_matches:
+            # 使用找到的第一个编号列表ID
+            ref_numid = numid_matches[0]
+            if is_information:
+                print(f"检测到参考文献使用编号列表ID: {ref_numid}")
+            ref_para_pattern = rf'(<w:p[^>]*>.*?<w:numPr>.*?<w:numId w:val="{ref_numid}"/>.*?</w:numPr>.*?</w:p>)'
+        else:
+            # 如果没有找到，尝试常见的ID
+            if is_information:
+                print("未检测到编号列表ID，尝试常见值")
+            ref_para_pattern = r'(<w:p[^>]*>.*?<w:numPr>.*?<w:numId w:val="[1-5]"/>.*?</w:numPr>.*?</w:p>)'
+        
+        ref_matches = list(re.finditer(ref_para_pattern, content[ref_start_pos:], re.DOTALL))
+        
+        # 为每个需要转换的参考文献段落添加书签
+        offset = 0
+        
+        # 为新引用创建书签（跳过已有交叉引用的）
+        new_refs_sorted = sorted(new_references, key=int)
+        for i, ref_num in enumerate(new_refs_sorted):
+            if i < len(ref_matches):
+                match = ref_matches[i]
+                original_para = match.group(1)
+                bookmark_name = f"_Ref_Auto_{ref_num}"
+                
+                # 创建书签XML
+                bookmark_start = f'<w:bookmarkStart w:id="{bookmark_id_counter}" w:name="{bookmark_name}"/>'
+                bookmark_end = f'<w:bookmarkEnd w:id="{bookmark_id_counter}"/>'
+                
+                # 在段落中插入书签
+                new_para = re.sub(r'(<w:pPr>.*?</w:pPr>)', rf'\1{bookmark_start}', original_para)
+                new_para = new_para.replace('</w:p>', f'{bookmark_end}</w:p>')
+                
+                # 在原内容中替换段落
+                actual_start = ref_start_pos + match.start() + offset
+                actual_end = ref_start_pos + match.end() + offset
+                content = content[:actual_start] + new_para + content[actual_end:]
+                
+                # 更新偏移量
+                offset += len(new_para) - len(original_para)
+                
+                reference_bookmarks[ref_num] = bookmark_name
+                bookmark_id_counter += 1
+                if is_information:
+                    print(f"为引用 [{ref_num}] 创建书签: {bookmark_name}")
+            else:
+                print(f"警告: 引用 [{ref_num}] 无法找到对应的参考文献段落")
+        
+        # 6. 转换正文中的引用 - 使用简单直接的字符串替换
+        if is_information:
+            print("开始转换引用...")
+        
+        total_converted = 0
+        total_references = 0
+        
+        # 处理每个需要转换的引用，使用最直接的替换方式
+        for ref_num in sorted(new_references, key=int):
+            if ref_num not in reference_bookmarks:
+                if is_information:
+                    print(f"跳过引用 [{ref_num}]：未创建对应书签")
+                continue
+                
+            bookmark_name = reference_bookmarks[ref_num]
+            
+            # 直接字符串替换 - 最安全的方法
+            simple_ref = f'[{ref_num}]'
+            
+            # 构建完整的交叉引用替换字符串
+            cross_ref_replacement = (
+                f'</w:t></w:r>'
+                f'<w:r><w:fldChar w:fldCharType="begin"/></w:r>'
+                f'<w:r><w:instrText xml:space="preserve"> REF {bookmark_name} \\r \\h </w:instrText></w:r>'
+                f'<w:r><w:fldChar w:fldCharType="separate"/></w:r>'
+                f'<w:r><w:rPr><w:vertAlign w:val="superscript"/></w:rPr><w:t>[{ref_num}]</w:t></w:r>'
+                f'<w:r><w:fldChar w:fldCharType="end"/></w:r>'
+                f'<w:r><w:t>'
+            )
+            
+            # 只替换在正文中的引用，避免替换参考文献中的引用
+            # 在参考文献部分之前进行替换
+            ref_section_pos = content.find('<w:t>参考文献</w:t>')
+            if ref_section_pos > 0:
+                main_content = content[:ref_section_pos]
+                ref_content = content[ref_section_pos:]
+                
+                # 检查正文部分是否包含该引用
+                if simple_ref in main_content:
+                    # 计算替换前的数量
+                    before_count = main_content.count(simple_ref)
+                    total_references += before_count
+                    
+                    # 在正文部分替换引用
+                    main_content = main_content.replace(simple_ref, cross_ref_replacement)
+                    content = main_content + ref_content
+                    
+                    # 验证是否成功转换
+                    if f'REF {bookmark_name}' in content:
+                        total_converted += before_count
+                        if is_information:
+                            print(f"转换引用 [{ref_num}] 为交叉引用 ({before_count} 处)")
+                    else:
+                        print(f"引用 [{ref_num}] 转换失败")
+                else:
+                    print(f"引用 [{ref_num}] 在正文中未找到（可能仅在参考文献中）")
+            else:
+                print(f"无法定位参考文献部分，跳过引用 [{ref_num}]")
+        
+        print(f"\n转换统计: 共发现 {len(references_found)} 个不同的引用编号，其中 {len(existing_ref_set)} 个已转换，正文中共有 {total_references} 处新引用，成功转换 {total_converted} 处")
+        
+        # 7. 保存修改后的document.xml
+        with open(document_xml_path, 'w', encoding='utf-8') as f:
+            f.write(content)
+        
+        if is_information:
+            print("文件保存成功")
+        
+        # 8. 重新打包为docx
+        with zipfile.ZipFile(output_docx_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+            for root, dirs, files in os.walk(extract_dir):
+                for file in files:
+                    file_path = os.path.join(root, file)
+                    arcname = os.path.relpath(file_path, extract_dir)
+                    zipf.write(file_path, arcname)
+    
+    return output_docx_path
+
+
+def parse_consecutive_references(ref_text):
+    """
+    解析连续引用格式，返回所有单独的引用编号
+    支持的格式：
+    - [1,2] -> [1] [2]
+    - [3-7] -> [3] [4] [5] [6] [7]
+    - [1、2] -> [1] [2]
+    - [4，2] -> [4] [2]
+    - [1-3,5] -> [1] [2] [3] [5]
+    """
+    references = []
+    
+    # 移除方括号
+    inner_text = ref_text.strip('[]')
+    
+    # 分割不同的部分（用逗号、顿号、中文逗号分割）
+    parts = re.split(r'[,，、]', inner_text)
+    
+    for part in parts:
+        part = part.strip()
+        # 检查是否包含范围分隔符（支持多种破折号）
+        range_match = re.search(r'(\d+)\s*[-–—]\s*(\d+)', part)
+        if range_match:
+            # 处理范围格式 如 3-7, 3–7, 3—7
+            try:
+                start_num = int(range_match.group(1))
+                end_num = int(range_match.group(2))
+                if start_num <= end_num:
+                    references.extend(range(start_num, end_num + 1))
+                else:
+                    # 如果起始大于结束，按原样处理
+                    references.extend([start_num, end_num])
+            except ValueError:
+                # 如果不能转换为数字，跳过
+                continue
+        else:
+            # 处理单个数字
+            try:
+                num = int(part.strip())
+                references.append(num)
+            except ValueError:
+                # 如果不能转换为数字，跳过
+                continue
+    
+    return sorted(list(set(references)))  # 去重并排序
+
+
+def detect_consecutive_references(content):
+    """
+    检测文档中的连续引用格式
+    返回需要转换的连续引用信息
+    """
+    consecutive_refs = []
+    seen_positions = set()
+    
+    # 匹配各种连续引用格式的综合正则表达式
+    # 支持：逗号、中文逗号、顿号、各种破折号的各种组合
+    pattern = r'\[(\d+(?:[,，、\-–—]\d+)+)\]'
+    
+    for match in re.finditer(pattern, content):
+        position = match.start()
+        
+        # 避免重复检测同一位置
+        if position in seen_positions:
+            continue
+        seen_positions.add(position)
+        
+        full_match = match.group(0)  # 完整匹配 如 [1,2]
+        inner_content = match.group(1)  # 内容 如 1,2
+        
+        # 解析出所有单独的引用编号
+        ref_numbers = parse_consecutive_references(full_match)
+        
+        if len(ref_numbers) > 1:  # 只处理包含多个引用的情况
+            consecutive_refs.append({
+                'original': full_match,
+                'position': position,
+                'numbers': ref_numbers
+            })
+            if is_information:
+                print(f"检测到连续引用: {full_match} -> {ref_numbers}")
+    
+    return consecutive_refs
+
+
+def convert_consecutive_to_individual(content, consecutive_refs):
+    """
+    将连续引用转换为单独的引用
+    """
+    # 按位置倒序排序，从后往前替换，避免位置偏移
+    consecutive_refs.sort(key=lambda x: x['position'], reverse=True)
+    
+    converted_count = 0
+    
+    for ref_info in consecutive_refs:
+        original = ref_info['original']
+        numbers = ref_info['numbers']
+        position = ref_info['position']
+        
+        # 检查这个位置是否还有原始文本（可能已被前面的操作修改）
+        if content[position:position+len(original)] == original:
+            # 生成替换文本：将连续引用拆分为单独的引用
+            individual_refs = ''.join(f'[{num}]' for num in numbers)
+            
+            # 替换原始文本
+            content = content[:position] + individual_refs + content[position+len(original):]
+            converted_count += 1
+            if is_information:
+                print(f"转换连续引用: {original} -> {individual_refs}")
+        else:
+            if is_information:
+                print(f"跳过已修改的连续引用: {original}")
+    
+    return content, converted_count
+
+
+def print_help():
+    """打印帮助信息"""
+    help_text = """
+ezxref - 智能文献引用转换工具
+支持的连续引用格式:
+  [1,2]          → [1][2]
+  [3-7]          → [3][4][5][6][7]  
+  [1、2]         → [1][2]
+  [4，2]         → [4][2]
+  [1-3,5]        → [1][2][3][5]
+  [2，4–6、8]    → [2][4][5][6][8]
+  [8–10]         → [8][9][10] (支持长破折号)
+  [5—8]          → [5][6][7][8] (支持长划线)
+
+用法:
+  ezxref <输入文件.docx> [输出文件.docx]
+  ezxref -h | --help
+
+参数:
+  输入文件.docx     要处理的Word文档路径
+  输出文件.docx     输出文件路径 (可选，默认添加_xref后缀)
+
+选项:
+  -h, --help            显示此帮助信息
+  -v, --version         显示版本信息
+  -i, --information     显示详细输出信息
+"""
+    print(help_text)
+
+
+def print_version():
+    """打印版本信息"""
+    print("ezxref版本: {0}".format(version))
+
+
+def parse_arguments(args):
+    """解析命令行参数"""
+    parsed_args = {
+        'input_file': None,
+        'output_file': None,
+        'help': False,
+        'version': False,
+        'information': False
+    }
+    
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        
+        if arg in ['-h', '--help']:
+            parsed_args['help'] = True
+        elif arg in ['-v', '--version']:
+            parsed_args['version'] = True
+        elif arg in ['-i', '--information']:
+            parsed_args['information'] = True
+        elif not arg.startswith('-'):
+            # 位置参数
+            if parsed_args['input_file'] is None:
+                parsed_args['input_file'] = arg
+            elif parsed_args['output_file'] is None:
+                parsed_args['output_file'] = arg
+        
+        i += 1
+    
+    # 创建简单的命名空间对象
+    class Args:
+        def __init__(self, **kwargs):
+            for k, v in kwargs.items():
+                setattr(self, k, v)
+    
+    return Args(**parsed_args)
+
+
+def main():
+    """主函数"""
+    
+    global is_information
+    args = parse_arguments(sys.argv[1:])
+    
+    # 处理帮助和版本
+    if args.help:
+        print_help()
+        return 0
+    
+    if args.version:
+        print_version()
+        return 0
+    
+    if args.information:
+        is_information = True
+    
+    # 检查是否提供了输入文件
+    if not args.input_file:
+        print("错误: 未指定输入文件")
+        print("使用 'ezxref -h' 查看帮助信息")
+        return 1
+    
+    input_file = args.input_file
+    output_file = args.output_file
+    
+    # 文件检查
+    if not os.path.exists(input_file):
+        print(f"错误: 文件 '{input_file}' 不存在")
+        return 1
+    
+    if not input_file.lower().endswith('.docx'):
+        print(f"错误: 文件 '{input_file}' 不是docx格式")
+        return 1
+    
+    
+    try:
+        output_path = convert_all_references_final(input_file, output_file)
+        if output_path:
+            print(f"\n输出文件: {output_path}")
+            print("\n提示: 如果交叉引用显示不正确，请确保按F9更新字段")
+            return 0
+        else:
+            print("转换失败")
+            return 1
+    
+    except Exception as e:
+        print(f"转换失败: {str(e)}")
+        return 1
+
+
+if __name__ == '__main__':
+    import sys
+    sys.exit(main())
