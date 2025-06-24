@@ -11,13 +11,16 @@
     - [ezvllm](#ezvllm)
     - [ezxref](#ezxref)
     - [ezproxy](#ezproxy)
-    - [ezcmd](#ezcmd)
-    - [ezname](#ezname)
   - [安装](#安装)
     - [快速安装](#快速安装)
     - [选择性安装](#选择性安装)
     - [跨平台支持](#跨平台支持)
+    - [安装过程](#安装过程)
   - [系统要求](#系统要求)
+    - [操作系统](#操作系统)
+    - [环境配置](#环境配置)
+    - [特定工具依赖](#特定工具依赖)
+    - [权限要求](#权限要求)
   - [许可](#许可)
 
 ## 工具列表
@@ -27,8 +30,6 @@
 | [ezvllm](#ezvllm) | `vLLM` 服务管理工具 | [使用指南](USAGE.md#ezvllm---vllm-服务管理工具) | `Conda`, `vLLM` |
 | [ezproxy](#ezproxy) | 代理设置管理工具 | [使用指南](USAGE.md#ezproxy---代理设置管理工具) | `SSH`,`jq` |
 | [ezxref](#ezxref) | 智能文献引用转换工具 | [使用指南](USAGE.md#ezxref---智能文献引用转换工具) | `Python3` |
-| [ezcmd](#ezcmd) | 命令行工具 | [使用指南](USAGE.md#ezcmd---命令行工具) | `Bash` |
-| [ezname](#ezname) | 文件命名工具 | [使用指南](USAGE.md#ezname---文件命名工具) | `Bash` |
 
 ### ezvllm
 
@@ -271,7 +272,6 @@ source ~/.zshrc
 - **ezvllm**: 需要安装 `Conda` 和 `vLLM`
 - **ezproxy**: 需要 `SSH` 和 `jq` 工具
 - **ezxref**: 需要安装 `Python3`
-- **ezcmd** 和 **ezname**: 仅需要 `Bash`
 
 ### 权限要求
 - 对 `~/bin` 目录的写权限

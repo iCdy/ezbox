@@ -4,7 +4,7 @@
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &> /dev/null && pwd)"
 
 # 可用的脚本列表
-AVAILABLE_SCRIPTS=("ezcmd" "ezname" "ezproxy" "ezvllm" "ezxref")
+AVAILABLE_SCRIPTS=("ezproxy" "ezvllm" "ezxref")
 
 # 显示帮助信息
 show_help() {
