@@ -11,7 +11,12 @@
     - [ezvllm](#ezvllm)
     - [ezxref](#ezxref)
     - [ezproxy](#ezproxy)
+    - [ezcmd](#ezcmd)
+    - [ezname](#ezname)
   - [安装](#安装)
+    - [快速安装](#快速安装)
+    - [选择性安装](#选择性安装)
+    - [跨平台支持](#跨平台支持)
   - [系统要求](#系统要求)
   - [许可](#许可)
 
@@ -22,6 +27,8 @@
 | [ezvllm](#ezvllm) | `vLLM` 服务管理工具 | [使用指南](USAGE.md#ezvllm---vllm-服务管理工具) | `Conda`, `vLLM` |
 | [ezproxy](#ezproxy) | 代理设置管理工具 | [使用指南](USAGE.md#ezproxy---代理设置管理工具) | `SSH`,`jq` |
 | [ezxref](#ezxref) | 智能文献引用转换工具 | [使用指南](USAGE.md#ezxref---智能文献引用转换工具) | `Python3` |
+| [ezcmd](#ezcmd) | 命令行工具 | [使用指南](USAGE.md#ezcmd---命令行工具) | `Bash` |
+| [ezname](#ezname) | 文件命名工具 | [使用指南](USAGE.md#ezname---文件命名工具) | `Bash` |
 
 ### ezvllm
 
@@ -189,54 +196,86 @@ source ezproxy -h
 
 ## 安装
 
+### 快速安装
+
 使用以下命令快速安装所有工具:
 
 ```bash
 git clone https://github.com/iCdy/shell.git
 cd shell
-./init.sh
+./init.sh .
 ```
 
-安装脚本会:
-1. 创建 `~/bin` 目录（如果不存在）
-2. 将所有工具脚本复制到该目录
-3. 添加 `~/bin` 到你的 PATH 环境变量（自动检测 bash 和 zsh）
-4. 设置正确的执行权限
+### 选择性安装
 
-默认安装所有脚本，如果想安装指定脚本，请修改`init.sh`中下面的部分，将不想要安装的脚本注释掉：
-```
-# 将指定脚本复制到 bin 目录
-cp  ./ezvllm $HOME/bin
-cp  ./ezproxy $HOME/bin
-cp  ./ezxref $HOME/bin
+安装脚本现在支持灵活的安装选项：
 
-# 赋予脚本执行权限
-chmod +x $HOME/bin/ezvllm
-chmod +x $HOME/bin/ezproxy
-chmod +x $HOME/bin/ezxref
-```
+```bash
+# 安装所有脚本
+./init.sh .
 
-例如不想安装`ezproxy`:
-```
-# 将指定脚本复制到 bin 目录
-cp  ./ezvllm $HOME/bin
-# cp  ./ezproxy $HOME/bin
-cp  ./ezxref $HOME/bin
+# 安装单个脚本
+./init.sh ezvllm
 
-# 赋予脚本执行权限
-chmod +x $HOME/bin/ezvllm
-# chmod +x $HOME/bin/ezproxy
-chmod +x $HOME/bin/ezxref
+# 安装多个指定脚本
+./init.sh ezvllm ezproxy
+
+# 更新已安装的脚本
+./init.sh --update
+
+# 查看帮助信息
+./init.sh --help
 ```
 
-安装完成后，请运行 `source ~/.bashrc` 或 `source ~/.zshrc` 使环境变量生效。
+### 跨平台支持
+
+安装脚本会自动检测操作系统并配置相应的环境文件：
+- **Linux**: 配置 `~/.bashrc` 和 `~/.zshrc`
+- **macOS**: 配置 `~/.bash_profile` 和 `~/.zshrc`
+
+### 安装过程
+
+安装脚本会自动完成以下操作：
+1. 检测操作系统类型
+2. 创建 `~/bin` 目录（如果不存在）
+3. 将选定的工具脚本复制到该目录
+4. 根据系统类型配置适当的环境文件
+5. 设置正确的执行权限
+
+安装完成后，根据您的系统类型运行相应命令使环境变量生效：
+
+```bash
+# Linux 系统
+source ~/.bashrc
+# 或
+source ~/.zshrc
+
+# macOS 系统
+source ~/.bash_profile
+# 或
+source ~/.zshrc
+```
 
 ## 系统要求
 
-- `Linux` 或 `macOS` 系统
-- `Bash` 或 `Zsh shell`
-- 对于 `ezvllm`: 需要安装 `Conda` 和 `vLLM`
-- 对于 `ezxref`: 需要安装 `Python3`
+### 操作系统
+- **Linux** 或 **macOS** 系统
+- **Bash** 或 **Zsh** shell
+
+### 环境配置
+- 安装脚本会自动检测系统类型并配置相应的环境文件：
+  - **Linux**: `~/.bashrc` 和 `~/.zshrc`
+  - **macOS**: `~/.bash_profile` 和 `~/.zshrc`
+
+### 特定工具依赖
+- **ezvllm**: 需要安装 `Conda` 和 `vLLM`
+- **ezproxy**: 需要 `SSH` 和 `jq` 工具
+- **ezxref**: 需要安装 `Python3`
+- **ezcmd** 和 **ezname**: 仅需要 `Bash`
+
+### 权限要求
+- 对 `~/bin` 目录的写权限
+- 对 shell 配置文件（如 `~/.bashrc`、`~/.zshrc` 等）的写权限
 
 ## 许可
 

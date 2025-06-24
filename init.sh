@@ -22,6 +22,9 @@ show_help() {
     echo "  init ezvllm           # 安装单个脚本"
     echo "  init ezvllm ezproxy   # 安装多个脚本"
     echo "  init --update         # 更新已安装脚本"
+    echo ""
+    echo "注意: 脚本会自动检测操作系统并配置相应的环境文件"
+    echo "      Linux: ~/.bashrc    macOS: ~/.bash_profile    通用: ~/.zshrc"
 }
 
 # 配置环境
@@ -32,10 +35,32 @@ setup_environment() {
         exit 1
     fi
 
-    # 配置 .bashrc
-    if ! grep -q "export PATH=\$HOME/bin:\$PATH" "$HOME/.bashrc" 2>/dev/null; then
-        echo "export PATH=\$HOME/bin:\$PATH" >> "$HOME/.bashrc"
-        echo "已添加环境变量到 .bashrc"
+    # 检测操作系统
+    local os_type=""
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        os_type="macos"
+    elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
+        os_type="linux"
+    else
+        os_type="other"
+    fi
+
+    # 根据操作系统选择合适的配置文件
+    local bash_config=""
+    if [ "$os_type" = "macos" ]; then
+        bash_config="$HOME/.bash_profile"
+    else
+        bash_config="$HOME/.bashrc"
+    fi
+
+    # 配置 bash 环境
+    if [ -f "$bash_config" ] || [ "$os_type" = "macos" ] || [ "$os_type" = "linux" ]; then
+        if ! grep -q "export PATH=\$HOME/bin:\$PATH" "$bash_config" 2>/dev/null; then
+            echo "export PATH=\$HOME/bin:\$PATH" >> "$bash_config"
+            echo "已添加环境变量到 $(basename "$bash_config")"
+        else
+            echo "$(basename "$bash_config") 中已存在环境变量设置，跳过"
+        fi
     fi
 
     # 配置 .zshrc (如果存在)
@@ -43,6 +68,8 @@ setup_environment() {
         if ! grep -q "export PATH=\$HOME/bin:\$PATH" "$HOME/.zshrc"; then
             echo "export PATH=\$HOME/bin:\$PATH" >> "$HOME/.zshrc"
             echo "已添加环境变量到 .zshrc"
+        else
+            echo ".zshrc 中已存在环境变量设置，跳过"
         fi
     fi
 }
@@ -109,7 +136,12 @@ install_scripts() {
     echo "安装完成: $success_count/$total_count 个脚本成功安装"
     
     if [ $success_count -gt 0 ]; then
-        echo "请运行 'source ~/.bashrc' 或 'source ~/.zshrc' 以使更改生效"
+        # 根据操作系统给出正确的提示
+        if [[ "$OSTYPE" == "darwin"* ]]; then
+            echo "请运行 'source ~/.bash_profile' 或 'source ~/.zshrc' 以使更改生效"
+        else
+            echo "请运行 'source ~/.bashrc' 或 'source ~/.zshrc' 以使更改生效"
+        fi
         echo "或者重新打开终端"
     fi
 }
@@ -135,21 +167,24 @@ main() {
         exit 0
     fi
     
-    # 首先设置环境
-    setup_environment
-    
     case "$1" in
         -h|--help)
             show_help
             ;;
         --update)
+            # 设置环境
+            setup_environment
             update_scripts
             ;;
         .)
+            # 设置环境
+            setup_environment
             echo "安装所有可用脚本..."
             install_scripts "${AVAILABLE_SCRIPTS[@]}"
             ;;
         *)
+            # 设置环境
+            setup_environment
             # 安装指定的脚本
             install_scripts "$@"
             ;;

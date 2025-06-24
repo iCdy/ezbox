@@ -2,12 +2,59 @@
 
 本文档提供了所有工具的详细使用说明。
 
+## 通用安装说明
+
+### 快速安装所有工具
+
+```bash
+# 克隆仓库
+git clone https://github.com/iCdy/shell.git
+cd shell
+
+# 安装所有工具
+./init.sh .
+
+# 使配置生效（根据您的系统选择）
+source ~/.zshrc      # zsh 用户
+source ~/.bashrc     # Linux bash 用户  
+source ~/.bash_profile  # macOS bash 用户
+```
+
+### 选择性安装
+
+```bash
+# 安装单个工具
+./init.sh ezvllm
+
+# 安装多个指定工具
+./init.sh ezvllm ezproxy
+
+# 更新已安装工具
+./init.sh --update
+
+# 查看帮助信息
+./init.sh --help
+```
+
+### 跨平台支持
+
+安装脚本会自动检测操作系统并配置相应的环境文件：
+- **Linux**: 配置 `~/.bashrc` 和 `~/.zshrc`
+- **macOS**: 配置 `~/.bash_profile` 和 `~/.zshrc`
+
 ## 目录
 
 - [工具使用指南](#工具使用指南)
+  - [通用安装说明](#通用安装说明)
+    - [快速安装所有工具](#快速安装所有工具)
+    - [选择性安装](#选择性安装)
+    - [跨平台支持](#跨平台支持)
   - [目录](#目录)
 - [ezvllm - vLLM 服务管理工具](#ezvllm---vllm-服务管理工具)
   - [安装](#安装)
+    - [方式一：安装所有工具](#方式一安装所有工具)
+    - [方式二：仅安装 ezvllm](#方式二仅安装-ezvllm)
+    - [方式三：更新已安装工具](#方式三更新已安装工具)
   - [基本用法](#基本用法)
   - [命令详解](#命令详解)
     - [serve - 启动服务](#serve---启动服务)
@@ -19,6 +66,9 @@
   - [疑难解答](#疑难解答)
 - [ezproxy - 代理设置管理工具](#ezproxy---代理设置管理工具)
   - [安装](#安装-1)
+    - [方式一：安装所有工具](#方式一安装所有工具-1)
+    - [方式二：仅安装 ezproxy](#方式二仅安装-ezproxy)
+    - [方式三：更新已安装工具](#方式三更新已安装工具-1)
   - [基本用法](#基本用法-1)
   - [命令详解](#命令详解-1)
     - [基本代理设置](#基本代理设置)
@@ -38,13 +88,31 @@
   - [疑难解答](#疑难解答-1)
 - [ezxref - 智能文献引用转换工具](#ezxref---智能文献引用转换工具)
   - [安装](#安装-2)
+    - [方式一：安装所有工具](#方式一安装所有工具-2)
+    - [方式二：仅安装 ezxref](#方式二仅安装-ezxref)
+    - [方式三：更新已安装工具](#方式三更新已安装工具-2)
   - [基本用法](#基本用法-2)
   - [功能特性](#功能特性)
   - [支持的引用格式](#支持的引用格式)
+    - [连续引用格式识别](#连续引用格式识别)
   - [命令详解](#命令详解-2)
+    - [基本转换命令](#基本转换命令)
+    - [命令选项](#命令选项)
   - [实用示例](#实用示例-2)
+    - [示例 1：基本转换](#示例-1基本转换)
+    - [示例 2：指定输出文件](#示例-2指定输出文件)
+    - [示例 3：查看详细转换信息](#示例-3查看详细转换信息)
+    - [示例 4：批量处理](#示例-4批量处理)
+    - [示例 5：带详细信息的批量处理](#示例-5带详细信息的批量处理)
   - [注意事项](#注意事项)
+    - [使用前准备](#使用前准备)
+    - [文档要求](#文档要求)
+    - [转换后操作](#转换后操作)
+    - [性能注意事项](#性能注意事项)
   - [疑难解答](#疑难解答-2)
+    - [常见问题](#常见问题)
+    - [错误排查](#错误排查)
+    - [高级用法](#高级用法)
 
 ---
 
@@ -54,18 +122,41 @@
 
 ## 安装
 
-使用安装脚本进行安装：
+### 方式一：安装所有工具
 
 ```bash
 # 克隆仓库
 git clone https://github.com/iCdy/shell.git
 cd shell
 
-# 运行安装脚本
-./init.sh
+# 安装所有工具
+./init.sh .
+
+# 使配置生效（根据您的系统选择）
+source ~/.zshrc      # zsh 用户
+source ~/.bashrc     # Linux bash 用户  
+source ~/.bash_profile  # macOS bash 用户
+```
+
+### 方式二：仅安装 ezvllm
+
+```bash
+# 克隆仓库
+git clone https://github.com/iCdy/shell.git
+cd shell
+
+# 仅安装 ezvllm
+./init.sh ezvllm
 
 # 使配置生效
-source ~/.zshrc  # 或 source ~/.bashrc
+source ~/.zshrc  # 或根据您的系统选择相应配置文件
+```
+
+### 方式三：更新已安装工具
+
+```bash
+cd shell
+./init.sh --update
 ```
 
 ## 基本用法
@@ -312,18 +403,41 @@ ezvllm chat -p 8002
 
 ## 安装
 
-使用安装脚本进行安装：
+### 方式一：安装所有工具
 
 ```bash
 # 克隆仓库
 git clone https://github.com/iCdy/shell.git
 cd shell
 
-# 运行安装脚本
-./init.sh
+# 安装所有工具
+./init.sh .
+
+# 使配置生效（根据您的系统选择）
+source ~/.zshrc      # zsh 用户
+source ~/.bashrc     # Linux bash 用户  
+source ~/.bash_profile  # macOS bash 用户
+```
+
+### 方式二：仅安装 ezproxy
+
+```bash
+# 克隆仓库
+git clone https://github.com/iCdy/shell.git
+cd shell
+
+# 仅安装 ezproxy
+./init.sh ezproxy
 
 # 使配置生效
-source ~/.zshrc  # 或 source ~/.bashrc
+source ~/.zshrc  # 或根据您的系统选择相应配置文件
+```
+
+### 方式三：更新已安装工具
+
+```bash
+cd shell
+./init.sh --update
 ```
 
 ## 基本用法
@@ -734,18 +848,41 @@ git config --global --get https.proxy
 
 ## 安装
 
-使用安装脚本进行安装：
+### 方式一：安装所有工具
 
 ```bash
 # 克隆仓库
 git clone https://github.com/iCdy/shell.git
 cd shell
 
-# 运行安装脚本
-./init.sh
+# 安装所有工具
+./init.sh .
+
+# 使配置生效（根据您的系统选择）
+source ~/.zshrc      # zsh 用户
+source ~/.bashrc     # Linux bash 用户  
+source ~/.bash_profile  # macOS bash 用户
+```
+
+### 方式二：仅安装 ezxref
+
+```bash
+# 克隆仓库
+git clone https://github.com/iCdy/shell.git
+cd shell
+
+# 仅安装 ezxref
+./init.sh ezxref
 
 # 使配置生效
-source ~/.zshrc  # 或 source ~/.bashrc
+source ~/.zshrc  # 或根据您的系统选择相应配置文件
+```
+
+### 方式三：更新已安装工具
+
+```bash
+cd shell
+./init.sh --update
 ```
 
 ## 基本用法
