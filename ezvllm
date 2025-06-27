@@ -1,7 +1,32 @@
 #!/bin/bash
 
 # 版本信息
-VERSION="2.0.0"
+VERSION="2.1.0"
+
+# # 信号处理函数
+# cleanup_monitor() {
+#     if [[ -n "$MONITOR_PID" ]]; then
+#         echo "正在清理超时监控进程 (PID: $MONITOR_PID)..."
+#         kill "$MONITOR_PID" 2>/dev/null
+#         wait "$MONITOR_PID" 2>/dev/null
+#         echo "超时监控进程已清理"
+        
+#     fi
+# }
+
+# 修改 cleanup_monitor 函数
+cleanup_monitor() {
+    if [[ -n "$MONITOR_PID" && "$MONITOR_CLEANED" != "true" ]]; then
+        echo "正在清理超时监控进程 (PID: $MONITOR_PID)..."
+        kill "$MONITOR_PID" 2>/dev/null
+        wait "$MONITOR_PID" 2>/dev/null
+        echo "超时监控进程已清理"
+        MONITOR_CLEANED="true"
+    fi
+}
+
+# 设置信号陷阱
+trap cleanup_monitor EXIT INT TERM
 
 ENV_NAME="vllm"
 GPU_ID="0"
@@ -18,6 +43,78 @@ TIMEOUT_MINUTES="60"
 SHOW_TIMEOUT_MINUTES=""
 COMMAND=""
 CONFIG_FILE="$HOME/.config/ezvllm/config"
+
+# 自动选择GPU函数
+auto_select_gpu() {
+  # 检查nvidia-smi是否可用
+  if ! command -v nvidia-smi >/dev/null 2>&1; then
+    echo "错误: nvidia-smi 不可用，无法检测GPU状态" >&2
+    echo "使用默认GPU: 0" >&2
+    echo "0"
+    return
+  fi
+  
+  # 获取GPU数量
+  gpu_count=$(nvidia-smi --list-gpus 2>/dev/null | wc -l)
+  if [ "$gpu_count" -eq 0 ]; then
+    echo "错误: 未检测到GPU" >&2
+    echo "使用默认GPU: 0" >&2
+    echo "0"
+    return
+  fi
+  
+  echo "正在检测可用GPU..." >&2
+  echo "检测到 $gpu_count 张GPU" >&2
+  
+  # 检查每张GPU的使用率
+  best_gpu=""
+  best_util=100
+  
+  for ((i=0; i<gpu_count; i++)); do
+    # 获取GPU利用率
+    util=$(nvidia-smi --query-gpu=utilization.gpu --format=csv,noheader,nounits --id=$i 2>/dev/null)
+    
+    # 获取显存使用率
+    memory_util=$(nvidia-smi --query-gpu=utilization.memory --format=csv,noheader,nounits --id=$i 2>/dev/null)
+    
+    # 获取显存使用情况
+    memory_info=$(nvidia-smi --query-gpu=memory.used,memory.total --format=csv,noheader,nounits --id=$i 2>/dev/null)
+    memory_used=$(echo "$memory_info" | cut -d',' -f1 | tr -d ' ')
+    memory_total=$(echo "$memory_info" | cut -d',' -f2 | tr -d ' ')
+    
+    if [ -n "$util" ] && [ -n "$memory_util" ]; then
+      # 计算显存使用百分比
+      if [ "$memory_total" -gt 0 ]; then
+        memory_percent=$((memory_used * 100 / memory_total))
+      else
+        memory_percent=0
+      fi
+      
+      echo "GPU $i: 计算利用率=${util}%, 显存利用率=${memory_util}%, 显存使用=${memory_used}MB/${memory_total}MB (${memory_percent}%)" >&2
+      
+      # 选择GPU利用率和显存利用率都小于5%的GPU
+      if [ "$util" -lt 5 ] && [ "$memory_util" -lt 5 ] && [ "$memory_percent" -lt 5 ]; then
+        if [ -z "$best_gpu" ] || [ "$util" -lt "$best_util" ] || ([ "$util" -eq "$best_util" ] && [ "$i" -lt "$best_gpu" ]); then
+          best_gpu="$i"
+          best_util="$util"
+        fi
+      fi
+    else
+      echo "GPU $i: 无法获取利用率信息" >&2
+    fi
+  done
+  
+  if [ -n "$best_gpu" ]; then
+    echo "自动选择GPU: $best_gpu (利用率: ${best_util}%)" >&2
+    echo "" >&2
+    echo "$best_gpu"
+    return 0
+  else
+    echo "错误: 没有找到利用率小于5%的GPU，请手动指定GPU或等待GPU空闲后重试" >&2
+    echo "当前所有GPU状态如上所示" >&2
+    return 1
+  fi
+}
 
 # 加载配置文件函数
 config_load() {
@@ -103,7 +200,7 @@ show_serve_help() {
   echo "用法: ezvllm serve [选项]"
   echo "选项:"
   echo "  -e, --env-name NAME       指定conda环境名称 (默认: $ENV_NAME)"
-  echo "  -g, --gpu-id ID           指定GPU ID (默认: $GPU_ID)"
+  echo "  -g, --gpu-id ID           指定GPU ID (默认: $GPU_ID, 使用 'a' 或 'auto' 自动选择可用GPU)"
   echo "  -m, --model-name NAME     指定模型名称 (默认: $MODEL_NAME)"
   echo "  -k, --api-key KEY         指定API密钥 (默认: $API_KEY)"
   echo "  -p, --port PORT           指定端口号 (默认: $PORT)"
@@ -113,6 +210,11 @@ show_serve_help() {
   echo "  -v, --vllm-args \"ARGS\"    传递额外参数给vllm serve命令（需要放在最后）"
   echo "  -h, --help                显示此帮助信息"
   echo "  -t, --timeout MINUTES     设置无响应退出时间（单位：分钟，默认: ${SHOW_TIMEOUT_MINUTES:- ∞ }分钟）"
+  echo ""
+  echo "GPU自动选择说明:"
+  echo "  使用 -g a 或 --gpu-id a 时，系统将自动检测所有GPU的利用率"
+  echo "  并选择GPU利用率、显存利用率和显存使用率均小于5%的GPU"
+  echo "  如果没有符合条件的GPU，将选择利用率最低的GPU"
   exit 0
 }
 
@@ -227,7 +329,11 @@ case "$COMMAND" in
           shift 2
           ;;
         -g|--gpu-id)
-          GPU_ID="$2"
+          if [[ "$2" == "a" || "$2" == "auto" ]]; then
+            GPU_ID="auto"
+          else
+            GPU_ID="$2"
+          fi
           shift 2
           ;;
         -m|--model-name)
@@ -563,13 +669,13 @@ check_http_activity() {
 # 超时监控函数
 monitor_timeout() {
   local port="$1"
-  local timeout_minutes="$2"
-  local timeout_seconds=$((timeout_minutes * 60))
+  local monitor_timeout_minutes="$2"
+  local timeout_seconds=$((monitor_timeout_minutes * 60))
   local log_file="/tmp/ezvllm_timeout_${port}.log"
   local last_request_file="/tmp/ezvllm_last_request_${port}"
   local connections_log="/tmp/ezvllm_connections_${port}.log"
   
-  echo "$(date '+%Y-%m-%d %H:%M:%S') - 开始监控端口 $port，超时时间: ${timeout_minutes}分钟" >> "$log_file"
+  echo "$(date '+%Y-%m-%d %H:%M:%S') - 开始监控端口 $port，超时时间: ${monitor_timeout_minutes}分钟" >> "$log_file"
   
   # 初始化最后请求时间为当前时间
   echo "$(date +%s)" > "$last_request_file"
@@ -625,7 +731,7 @@ monitor_timeout() {
       time_diff=$((current_time - last_request_time))
       
       if [ "$time_diff" -gt "$timeout_seconds" ]; then
-        echo "$(date '+%Y-%m-%d %H:%M:%S') - 超时 ${timeout_minutes}分钟 无请求，准备关闭服务" >> "$log_file"
+        echo "$(date '+%Y-%m-%d %H:%M:%S') - 超时 ${monitor_timeout_minutes}分钟 无请求，准备关闭服务" >> "$log_file"
         
         # 查找并杀死vllm进程
         if [ -n "$vllm_pid" ]; then
@@ -652,6 +758,182 @@ monitor_timeout() {
     rm -f "$current_connections"
   done
 }
+
+# 如果指定了check命令，则执行检查操作
+if [ "$COMMAND" = "check" ]; then
+  if [ "$TEST_MODE" = true ]; then
+    test_api_connection "$PORT" "$API_KEY"
+  else
+    check_running_model "$PORT" "$API_KEY"
+  fi
+  exit $?
+fi
+
+# 如果指定了chat命令，则启动聊天
+if [ "$COMMAND" = "chat" ]; then
+  if ! netstat -tuln | grep -q ":$PORT "; then
+    echo "错误: 端口 $PORT 上没有运行服务，请先启动服务"
+    exit 1
+  fi
+  
+  # 测试API连接
+  echo "正在测试与模型的连接..."
+  if ! test_api_connection "$PORT" "$API_KEY" > /dev/null; then
+    echo "错误: 无法连接到模型API，请确保服务正常运行"
+    exit 1
+  fi
+  
+  # 初始化消息数组
+  MESSAGES="[]"
+  
+  # 添加系统消息(如果提供)
+  if [ -n "$SYSTEM_PROMPT" ]; then
+    MESSAGES=$(echo "$MESSAGES" | jq --arg prompt "$SYSTEM_PROMPT" \
+      '. + [{"role": "system", "content": $prompt}]')
+  fi
+  
+  # 处理单轮对话模式 (-1/--single)
+  if [ "$SINGLE_MODE" = true ]; then
+    # 单轮对话模式
+    if [ -n "$USER_PROMPT" ]; then
+      # 如果设置了user_prompt，直接使用该值
+      MESSAGES=$(echo "$MESSAGES" | jq --arg prompt "$USER_PROMPT" \
+        '. + [{"role": "user", "content": $prompt}]')
+    else
+      # 如果没有设置user_prompt，让用户手动输入一次
+      echo "请输入您的问题 (单轮对话模式)："
+      echo -n "用户: "
+      read -r USER_INPUT
+      MESSAGES=$(echo "$MESSAGES" | jq --arg content "$USER_INPUT" \
+        '. + [{"role": "user", "content": $content}]')
+    fi
+    
+    # 发送请求到API
+    echo "正在处理您的请求..."
+    RESPONSE=$(curl -s -X POST "http://localhost:$PORT/v1/chat/completions" \
+      -H "Authorization: Bearer $API_KEY" \
+      -H "Content-Type: application/json" \
+      -d '{
+        "model": "'"$MODEL_NAME"'",
+        "messages": '"$MESSAGES"',
+        "temperature": '"$TEMPERATURE"'
+      }')
+    
+    # 检查错误
+    if [[ "$RESPONSE" == *"error"* || -z "$RESPONSE" ]]; then
+      echo "错误: $(echo "$RESPONSE" | jq -r '.error.message // .error // "API请求失败"' 2>/dev/null || echo "$RESPONSE")"
+      exit 1
+    fi
+    
+    # 提取助手回复
+    ASSISTANT_REPLY=$(echo "$RESPONSE" | jq -r '.choices[0].message.content' 2>/dev/null)
+    
+    # 显示助手回复
+    echo -e "\n助手: $ASSISTANT_REPLY\n"
+    
+    # 单轮对话模式直接退出
+    exit 0
+  fi
+  
+  # 多轮对话模式
+  if [ -n "$USER_PROMPT" ]; then
+    MESSAGES=$(echo "$MESSAGES" | jq --arg prompt "$USER_PROMPT" \
+      '. + [{"role": "user", "content": $prompt}]')
+    
+    echo "发送初始请求..."
+    RESPONSE=$(curl -s -X POST "http://localhost:$PORT/v1/chat/completions" \
+      -H "Authorization: Bearer $API_KEY" \
+      -H "Content-Type: application/json" \
+      -d '{
+        "model": "'"$MODEL_NAME"'",
+        "messages": '"$MESSAGES"',
+        "temperature": '"$TEMPERATURE"'
+      }')
+    
+    # 检查错误
+    if [[ "$RESPONSE" == *"error"* || -z "$RESPONSE" ]]; then
+      echo "错误: $(echo "$RESPONSE" | jq -r '.error.message // .error // "API请求失败"' 2>/dev/null || echo "$RESPONSE")"
+      echo "调试信息: 尝试发送到 http://localhost:$PORT/v1/chat/completions"
+      echo "消息内容: $MESSAGES"
+      exit 1
+    fi
+    
+    # 提取助手回复
+    ASSISTANT_REPLY=$(echo "$RESPONSE" | jq -r '.choices[0].message.content' 2>/dev/null)
+    
+    # 显示助手回复
+    echo -e "用户: $USER_PROMPT\n\n助手: $ASSISTANT_REPLY\n"
+    
+    # 添加助手回复到消息数组
+    MESSAGES=$(echo "$MESSAGES" | jq --arg content "$ASSISTANT_REPLY" \
+      '. + [{"role": "assistant", "content": $content}]')
+  fi
+
+  echo "开始与 $MODEL_NAME 聊天 (输入 'exit' 或 'quit' 退出)"
+  echo "---------------------------------------------"
+  
+  # 聊天循环
+  while true; do
+    # 提示用户输入
+    echo -n "用户: "
+    read -r USER_INPUT
+    
+    # 检查退出命令
+    if [[ "$USER_INPUT" == "exit" || "$USER_INPUT" == "quit" ]]; then
+      echo "聊天结束"
+      exit 0
+    fi
+    
+    # 添加用户消息到消息数组
+    MESSAGES=$(echo "$MESSAGES" | jq --arg content "$USER_INPUT" \
+      '. + [{"role": "user", "content": $content}]')
+    
+    # 打印调试信息
+    # echo "发送消息: $MESSAGES"
+    
+    # 发送请求到API
+    RESPONSE=$(curl -s -X POST "http://localhost:$PORT/v1/chat/completions" \
+      -H "Authorization: Bearer $API_KEY" \
+      -H "Content-Type: application/json" \
+      -d '{
+        "model": "'"$MODEL_NAME"'",
+        "messages": '"$MESSAGES"',
+        "temperature": '"$TEMPERATURE"'
+      }')
+    
+    # 检查错误
+    if [[ "$RESPONSE" == *"error"* || -z "$RESPONSE" ]]; then
+      echo "错误: $(echo "$RESPONSE" | jq -r '.error.message // .error // "API请求失败"' 2>/dev/null || echo "$RESPONSE")"
+      echo "调试信息: 尝试发送到 http://localhost:$PORT/v1/chat/completions"
+      echo "消息内容: $MESSAGES"
+      exit 1
+    fi
+    
+    # 提取助手回复
+    ASSISTANT_REPLY=$(echo "$RESPONSE" | jq -r '.choices[0].message.content' 2>/dev/null)
+    
+    # 显示助手回复
+    echo -e "\n助手: $ASSISTANT_REPLY\n"
+    
+    # 添加助手回复到消息数组
+    MESSAGES=$(echo "$MESSAGES" | jq --arg content "$ASSISTANT_REPLY" \
+      '. + [{"role": "assistant", "content": $content}]')
+  done
+  
+  exit 0
+fi
+
+
+
+# 如果GPU_ID是auto，则自动选择GPU
+if [[ "$GPU_ID" == "auto" ]]; then
+  selected_gpu=$(auto_select_gpu)
+  if [ $? -ne 0 ] || [ -z "$selected_gpu" ]; then
+    echo "自动选择GPU失败，脚本退出"
+    exit 1
+  fi
+  GPU_ID="$selected_gpu"
+fi
 
 echo "正在使用以下配置:"
 echo "conda环境: $ENV_NAME"
@@ -719,12 +1001,10 @@ fi
 # 启动vllm服务
 eval $CMD
 
-# 错误处理
-if [ $? -ne 0 ]; then
+# 错误处理和清理
+vllm_exit_code=$?
+cleanup_monitor
+if [ $vllm_exit_code -ne 0 ]; then
   echo "Error running vllm"
-  # 如果vllm启动失败，杀死监控进程
-  if [ -n "$MONITOR_PID" ]; then
-    kill "$MONITOR_PID" 2>/dev/null
-  fi
   exit 1
 fi
