@@ -118,7 +118,7 @@ source ~/.bash_profile  # macOS bash 用户
 
 # ezvllm - vLLM 服务管理工具
 
-`ezvllm` 是一个简化 vLLM 服务管理的命令行工具，支持快速启动模型服务、交互式聊天、服务状态检查和灵活的配置管理。
+`ezvllm` 是一个简化 vLLM 服务管理的命令行工具，支持快速启动模型服务、交互式聊天、服务状态检查和灵活的配置管理。新增超时自动退出功能，可在指定时间内无请求时自动关闭服务，有效节省计算资源。
 
 ## 安装
 
@@ -200,6 +200,7 @@ ezvllm serve [选项]
 - `-p, --port PORT` - 指定服务端口，默认为 "8009"
 - `-l, --max-model-len LEN` - 指定最大模型长度，默认不限制
 - `-u, --gpu-util UTIL` - 指定 GPU 利用率，默认为 "0.9"
+- `-t, --timeout MINUTES` - 设置超时时间（分钟），超时后自动退出服务，默认60分钟。设置为0时不限时。
 - `-d, --disable-function` - 禁用函数调用功能
 - `-v, --vllm-args "ARGS"` - 传递额外参数给 vllm serve 命令
 
@@ -217,6 +218,9 @@ ezvllm serve -g 1 -u 0.8
 
 # 限制最大模型长度
 ezvllm serve -l 2048
+
+# 设置30分钟超时，无请求时自动退出
+ezvllm serve -t 30
 
 # 传递额外参数给 vllm
 ezvllm serve -v "--tensor-parallel-size 2 --quantization awq"
@@ -337,6 +341,7 @@ ezvllm 使用位于 `$HOME/.config/ezvllm/config` 的配置文件存储默认设
 - `PORT` - 服务端口
 - `MAX_MODEL_LEN` - 最大模型长度
 - `GPU_UTIL` - GPU 利用率
+- `TIMEOUT_MINUTES` - 超时时间（分钟），默认为60分钟。设置为0为不限时。
 - `DISABLE_FUNCTION_CALL` - 是否禁用函数调用
 - `SYSTEM_PROMPT` - 默认系统提示词
 - `TEMPERATURE` - 生成温度
@@ -373,6 +378,32 @@ ezvllm serve -m "meta-llama/Llama-2-7b-chat-hf" -p 8002 -g 1
 
 # 与特定实例聊天
 ezvllm chat -p 8002
+```
+
+**使用超时自动退出功能：**
+
+```bash
+# 启动服务，30分钟无请求后自动退出
+ezvllm serve -t 30
+
+# 启动指定模型，60分钟无请求后自动退出
+ezvllm serve -m "Qwen/Qwen3-7B" -p 8888 -t 60
+
+# 结合其他参数使用超时功能
+ezvllm serve -m "meta-llama/Llama-2-7b-chat-hf" -g 1 -u 0.8 -t 45
+```
+
+**超时功能使用场景：**
+
+```bash
+# 开发测试：短时间测试模型，避免忘记关闭
+ezvllm serve -m "test-model" -t 15
+
+# 临时演示：演示结束后自动清理资源
+ezvllm serve -m "demo-model" -p 8080 -t 120
+
+# 批处理任务：处理完成后自动退出
+ezvllm serve -m "batch-model" -t 180
 ```
 
 ## 疑难解答
