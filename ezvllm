@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # 版本信息
-VERSION="2.1.0"
+VERSION="2.1.1"
 
 # # 信号处理函数
 # cleanup_monitor() {
@@ -29,7 +29,7 @@ cleanup_monitor() {
 trap cleanup_monitor EXIT INT TERM
 
 ENV_NAME="vllm"
-GPU_ID="0"
+GPU_ID="auto"
 MODEL_NAME="Qwen/Qwen3-4B"
 API_KEY="1205"
 PORT="8009"
