@@ -230,6 +230,13 @@ if [ "$JUPYTER_PROXY" = "true" ]; then
     echo "os.environ['http_proxy'] = 'http://$PROXY_ADDR'"
     echo "os.environ['https_proxy'] = 'http://$PROXY_ADDR'"
     echo "os.environ['all_proxy'] = 'socks5://$PROXY_ADDR'"
+    echo ""
+    echo "如果您是NLP领域内的研究者，您可能还会用到下面的内容:"
+    echo ""
+    echo "os.environ['TRANSFORMERS_OFFLINE'] = '1'"
+    echo "os.environ['HF_DATASETS_OFFLINE'] = '1'"
+    echo "os.environ['HF_HUB_OFFLINE'] = '1'"
+    echo "os.environ['CUDA_VISIBLE_DEVICES'] = 'number_of_your_gpu'"
     return 0
 fi  
 
