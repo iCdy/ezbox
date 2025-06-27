@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # 版本信息
-VERSION="1.1.0"
+VERSION="2.0.0"
 
 ENV_NAME="vllm"
 GPU_ID="0"
@@ -14,6 +14,8 @@ DISABLE_FUNCTION_CALL=false
 SYSTEM_PROMPT=""
 USER_PROMPT=""
 TEMPERATURE="0.7"
+TIMEOUT_MINUTES="60"
+SHOW_TIMEOUT_MINUTES=""
 COMMAND=""
 CONFIG_FILE="$HOME/.config/ezvllm/config"
 
@@ -37,6 +39,7 @@ config_load() {
         SYSTEM_PROMPT) SYSTEM_PROMPT="$value" ;;
         USER_PROMPT) USER_PROMPT="$value" ;;
         TEMPERATURE) TEMPERATURE="$value" ;;
+        TIMEOUT_MINUTES) TIMEOUT_MINUTES="$value" ;;
         DISABLE_FUNCTION_CALL) 
           if [[ "$value" == "true" || "$value" == "1" || "$value" == "yes" ]]; then
             DISABLE_FUNCTION_CALL=true
@@ -63,10 +66,13 @@ config_load() {
       echo "SYSTEM_PROMPT=$SYSTEM_PROMPT" >> "$CONFIG_FILE"
       echo "USER_PROMPT=$USER_PROMPT" >> "$CONFIG_FILE"
       echo "TEMPERATURE=$TEMPERATURE" >> "$CONFIG_FILE"
+      echo "TIMEOUT_MINUTES=$TIMEOUT_MINUTES" >> "$CONFIG_FILE"
       echo "已创建默认配置文件: $CONFIG_FILE"
     fi
   fi
 }
+
+
 
 # 显示版本信息
 show_version() {
@@ -106,6 +112,7 @@ show_serve_help() {
   echo "  -d, --disable-function    禁用function call功能"
   echo "  -v, --vllm-args \"ARGS\"    传递额外参数给vllm serve命令（需要放在最后）"
   echo "  -h, --help                显示此帮助信息"
+  echo "  -t, --timeout MINUTES     设置无响应退出时间（单位：分钟，默认: ${SHOW_TIMEOUT_MINUTES:- ∞ }分钟）"
   exit 0
 }
 
@@ -152,6 +159,14 @@ show_chat_help() {
 
 # 加载配置文件
 config_load
+
+    
+# 设置显示用的超时时间
+if [[ -n "$TIMEOUT_MINUTES" && "$TIMEOUT_MINUTES" -gt 0 ]]; then
+  SHOW_TIMEOUT_MINUTES="$TIMEOUT_MINUTES"
+else
+  SHOW_TIMEOUT_MINUTES=""
+fi
 
 if [[ $# -gt 0 ]]; then
   case "$1" in
@@ -238,6 +253,10 @@ case "$COMMAND" in
         -d|--disable-function)
           DISABLE_FUNCTION_CALL=true
           shift
+          ;;
+        -t|--timeout)
+          TIMEOUT_MINUTES="$2"
+          shift 2
           ;;
         -v|--vllm-args)
           # 收集剩余所有参数作为VLLM参数
@@ -356,6 +375,7 @@ case "$COMMAND" in
           echo "  SYSTEM_PROMPT         - 系统提示词 (默认: 空)"
           echo "  USER_PROMPT           - 用户输入提示 (默认: 空)"
           echo "  TEMPERATURE           - 生成温度 (默认: $TEMPERATURE)"
+          echo "  TIMEOUT_MINUTES       - 超时时间（分钟） (默认: $TIMEOUT_MINUTES)"
           exit 0
           ;;
         -h|--help)
@@ -513,169 +533,125 @@ test_api_connection() {
   fi
 }
 
-# 如果指定了check命令，则执行检查操作
-if [ "$COMMAND" = "check" ]; then
-  if [ "$TEST_MODE" = true ]; then
-    test_api_connection "$PORT" "$API_KEY"
-  else
-    check_running_model "$PORT" "$API_KEY"
+# 检测HTTP请求活动的辅助函数
+check_http_activity() {
+  local port="$1"
+  local log_file="$2"
+  
+  # 方法1: 检查vllm的metrics端点
+  if command -v curl >/dev/null 2>&1; then
+    # 尝试访问metrics端点来触发连接检测
+    response=$(curl -s -m 2 "http://localhost:${port}/metrics" 2>/dev/null || true)
+    if [ -n "$response" ]; then
+      echo "$(date '+%Y-%m-%d %H:%M:%S') - 通过metrics端点检测到服务活跃" >> "$log_file"
+      return 0
+    fi
   fi
-  exit $?
-fi
+  
+  # 方法2: 检查TCP连接的统计信息
+  if command -v ss >/dev/null 2>&1; then
+    # 检查端口上的连接统计
+    connections=$(ss -s 2>/dev/null | grep -E "(estab|listen)" || true)
+    if [ -n "$connections" ]; then
+      return 1  # 有连接但不确定是否为新请求
+    fi
+  fi
+  
+  return 1
+}
 
-# 如果指定了chat命令，则启动聊天
-if [ "$COMMAND" = "chat" ]; then
-  if ! netstat -tuln | grep -q ":$PORT "; then
-    echo "错误: 端口 $PORT 上没有运行服务，请先启动服务"
-    exit 1
-  fi
+# 超时监控函数
+monitor_timeout() {
+  local port="$1"
+  local timeout_minutes="$2"
+  local timeout_seconds=$((timeout_minutes * 60))
+  local log_file="/tmp/ezvllm_timeout_${port}.log"
+  local last_request_file="/tmp/ezvllm_last_request_${port}"
+  local connections_log="/tmp/ezvllm_connections_${port}.log"
   
-  # 测试API连接
-  echo "正在测试与模型的连接..."
-  if ! test_api_connection "$PORT" "$API_KEY" > /dev/null; then
-    echo "错误: 无法连接到模型API，请确保服务正常运行"
-    exit 1
-  fi
+  echo "$(date '+%Y-%m-%d %H:%M:%S') - 开始监控端口 $port，超时时间: ${timeout_minutes}分钟" >> "$log_file"
   
-  # 初始化消息数组
-  MESSAGES="[]"
+  # 初始化最后请求时间为当前时间
+  echo "$(date +%s)" > "$last_request_file"
   
-  # 添加系统消息(如果提供)
-  if [ -n "$SYSTEM_PROMPT" ]; then
-    MESSAGES=$(echo "$MESSAGES" | jq --arg prompt "$SYSTEM_PROMPT" \
-      '. + [{"role": "system", "content": $prompt}]')
-  fi
+  # 记录初始连接状态
+  netstat -an | grep ":$port " > "$connections_log" 2>/dev/null || true
   
-  # 处理单轮对话模式 (-1/--single)
-  if [ "$SINGLE_MODE" = true ]; then
-    # 单轮对话模式
-    if [ -n "$USER_PROMPT" ]; then
-      # 如果设置了user_prompt，直接使用该值
-      MESSAGES=$(echo "$MESSAGES" | jq --arg prompt "$USER_PROMPT" \
-        '. + [{"role": "user", "content": $prompt}]')
-    else
-      # 如果没有设置user_prompt，让用户手动输入一次
-      echo "请输入您的问题 (单轮对话模式)："
-      echo -n "用户: "
-      read -r USER_INPUT
-      MESSAGES=$(echo "$MESSAGES" | jq --arg content "$USER_INPUT" \
-        '. + [{"role": "user", "content": $content}]')
-    fi
-    
-    # 发送请求到API
-    echo "正在处理您的请求..."
-    RESPONSE=$(curl -s -X POST "http://localhost:$PORT/v1/chat/completions" \
-      -H "Authorization: Bearer $API_KEY" \
-      -H "Content-Type: application/json" \
-      -d '{
-        "model": "'"$MODEL_NAME"'",
-        "messages": '"$MESSAGES"',
-        "temperature": '"$TEMPERATURE"'
-      }')
-    
-    # 检查错误
-    if [[ "$RESPONSE" == *"error"* || -z "$RESPONSE" ]]; then
-      echo "错误: $(echo "$RESPONSE" | jq -r '.error.message // .error // "API请求失败"' 2>/dev/null || echo "$RESPONSE")"
-      exit 1
-    fi
-    
-    # 提取助手回复
-    ASSISTANT_REPLY=$(echo "$RESPONSE" | jq -r '.choices[0].message.content' 2>/dev/null)
-    
-    # 显示助手回复
-    echo -e "\n助手: $ASSISTANT_REPLY\n"
-    
-    # 单轮对话模式直接退出
-    exit 0
-  fi
-  
-  # 多轮对话模式
-  if [ -n "$USER_PROMPT" ]; then
-    MESSAGES=$(echo "$MESSAGES" | jq --arg prompt "$USER_PROMPT" \
-      '. + [{"role": "user", "content": $prompt}]')
-    
-    echo "发送初始请求..."
-    RESPONSE=$(curl -s -X POST "http://localhost:$PORT/v1/chat/completions" \
-      -H "Authorization: Bearer $API_KEY" \
-      -H "Content-Type: application/json" \
-      -d '{
-        "model": "'"$MODEL_NAME"'",
-        "messages": '"$MESSAGES"',
-        "temperature": '"$TEMPERATURE"'
-      }')
-    
-    # 检查错误
-    if [[ "$RESPONSE" == *"error"* || -z "$RESPONSE" ]]; then
-      echo "错误: $(echo "$RESPONSE" | jq -r '.error.message // .error // "API请求失败"' 2>/dev/null || echo "$RESPONSE")"
-      echo "调试信息: 尝试发送到 http://localhost:$PORT/v1/chat/completions"
-      echo "消息内容: $MESSAGES"
-      exit 1
-    fi
-    
-    # 提取助手回复
-    ASSISTANT_REPLY=$(echo "$RESPONSE" | jq -r '.choices[0].message.content' 2>/dev/null)
-    
-    # 显示助手回复
-    echo -e "用户: $USER_PROMPT\n\n助手: $ASSISTANT_REPLY\n"
-    
-    # 添加助手回复到消息数组
-    MESSAGES=$(echo "$MESSAGES" | jq --arg content "$ASSISTANT_REPLY" \
-      '. + [{"role": "assistant", "content": $content}]')
-  fi
-
-  echo "开始与 $MODEL_NAME 聊天 (输入 'exit' 或 'quit' 退出)"
-  echo "---------------------------------------------"
-  
-  # 聊天循环
   while true; do
-    # 提示用户输入
-    echo -n "用户: "
-    read -r USER_INPUT
+    sleep 10  # 每10秒检查一次，更频繁的检测
     
-    # 检查退出命令
-    if [[ "$USER_INPUT" == "exit" || "$USER_INPUT" == "quit" ]]; then
-      echo "聊天结束"
-      exit 0
+    # 检查vllm进程是否还在运行
+    vllm_pid=$(pgrep -f "vllm.*serve.*--port $port" 2>/dev/null || true)
+    if [ -z "$vllm_pid" ]; then
+      echo "$(date '+%Y-%m-%d %H:%M:%S') - vllm进程已退出，停止监控" >> "$log_file"
+      rm -f "$last_request_file" "$connections_log"
+      break
     fi
     
-    # 添加用户消息到消息数组
-    MESSAGES=$(echo "$MESSAGES" | jq --arg content "$USER_INPUT" \
-      '. + [{"role": "user", "content": $content}]')
-    
-    # 打印调试信息
-    # echo "发送消息: $MESSAGES"
-    
-    # 发送请求到API
-    RESPONSE=$(curl -s -X POST "http://localhost:$PORT/v1/chat/completions" \
-      -H "Authorization: Bearer $API_KEY" \
-      -H "Content-Type: application/json" \
-      -d '{
-        "model": "'"$MODEL_NAME"'",
-        "messages": '"$MESSAGES"',
-        "temperature": '"$TEMPERATURE"'
-      }')
-    
-    # 检查错误
-    if [[ "$RESPONSE" == *"error"* || -z "$RESPONSE" ]]; then
-      echo "错误: $(echo "$RESPONSE" | jq -r '.error.message // .error // "API请求失败"' 2>/dev/null || echo "$RESPONSE")"
-      echo "调试信息: 尝试发送到 http://localhost:$PORT/v1/chat/completions"
-      echo "消息内容: $MESSAGES"
-      exit 1
+    # 检查端口是否还在监听
+    if ! ss -tuln 2>/dev/null | grep -q ":$port " && ! netstat -tuln 2>/dev/null | grep -q ":$port "; then
+      echo "$(date '+%Y-%m-%d %H:%M:%S') - 端口 $port 已关闭，停止监控" >> "$log_file"
+      rm -f "$last_request_file" "$connections_log"
+      break
     fi
     
-    # 提取助手回复
-    ASSISTANT_REPLY=$(echo "$RESPONSE" | jq -r '.choices[0].message.content' 2>/dev/null)
+    current_time=$(date +%s)
     
-    # 显示助手回复
-    echo -e "\n助手: $ASSISTANT_REPLY\n"
+    # 获取当前连接状态
+    current_connections="/tmp/ezvllm_current_${port}.log"
+    netstat -an 2>/dev/null | grep ":$port " > "$current_connections" || true
     
-    # 添加助手回复到消息数组
-    MESSAGES=$(echo "$MESSAGES" | jq --arg content "$ASSISTANT_REPLY" \
-      '. + [{"role": "assistant", "content": $content}]')
+    # 检查是否有新的连接活动（比较连接状态的变化）
+    if ! diff "$connections_log" "$current_connections" >/dev/null 2>&1; then
+      # 连接状态有变化，说明可能有新请求
+      echo "$current_time" > "$last_request_file"
+      echo "$(date '+%Y-%m-%d %H:%M:%S') - 检测到连接状态变化，更新最后请求时间" >> "$log_file"
+      cp "$current_connections" "$connections_log"
+    fi
+    
+    # 检查是否有HTTP请求活动（通过检测端口上的数据传输）
+    # 使用ss命令检查是否有数据在传输
+    if command -v ss >/dev/null 2>&1; then
+      data_transfer=$(ss -i | grep ":$port " | grep -E "(bytes_sent|bytes_received)" 2>/dev/null || true)
+      if [ -n "$data_transfer" ]; then
+        echo "$current_time" > "$last_request_file"
+        echo "$(date '+%Y-%m-%d %H:%M:%S') - 检测到数据传输活动" >> "$log_file"
+      fi
+    fi
+    
+    # 检查超时
+    if [ -f "$last_request_file" ]; then
+      last_request_time=$(cat "$last_request_file")
+      time_diff=$((current_time - last_request_time))
+      
+      if [ "$time_diff" -gt "$timeout_seconds" ]; then
+        echo "$(date '+%Y-%m-%d %H:%M:%S') - 超时 ${timeout_minutes}分钟 无请求，准备关闭服务" >> "$log_file"
+        
+        # 查找并杀死vllm进程
+        if [ -n "$vllm_pid" ]; then
+          echo "$(date '+%Y-%m-%d %H:%M:%S') - 发送SIGTERM信号到进程 $vllm_pid" >> "$log_file"
+          kill -TERM "$vllm_pid" 2>/dev/null || true
+          
+          # 等待10秒，如果进程还在运行则强制杀死
+          sleep 10
+          if kill -0 "$vllm_pid" 2>/dev/null; then
+            echo "$(date '+%Y-%m-%d %H:%M:%S') - 强制杀死进程 $vllm_pid" >> "$log_file"
+            kill -KILL "$vllm_pid" 2>/dev/null || true
+          fi
+        fi
+        
+        rm -f "$last_request_file" "$connections_log" "$current_connections"
+        echo "$(date '+%Y-%m-%d %H:%M:%S') - 监控结束" >> "$log_file"
+        break
+      else
+        remaining_time=$((timeout_seconds - time_diff))
+        echo "$(date '+%Y-%m-%d %H:%M:%S') - 距离超时还有: $((remaining_time/60))分钟$((remaining_time%60))秒" >> "$log_file"
+      fi
+    fi
+    
+    rm -f "$current_connections"
   done
-  
-  exit 0
-fi
+}
 
 echo "正在使用以下配置:"
 echo "conda环境: $ENV_NAME"
@@ -686,6 +662,9 @@ echo "端口号: $PORT"
 echo "最大模型长度: ${MAX_MODEL_LEN:-不限制}"
 echo "GPU使用率: $GPU_UTIL"
 echo "禁用function call: $DISABLE_FUNCTION_CALL"
+if [ -n "$TIMEOUT_MINUTES" ] && [ "$TIMEOUT_MINUTES" -gt 0 ]; then
+  echo "超时时间: ${TIMEOUT_MINUTES}分钟"
+fi
 
 source ~/miniconda3/etc/profile.d/conda.sh || source ~/anaconda3/etc/profile.d/conda.sh
 conda activate $ENV_NAME
@@ -710,10 +689,42 @@ fi
 
 # 构建并执行vllm命令
 echo "执行命令: $CMD"
+
+# 如果设置了超时，启动后台监控进程
+if [ -n "$TIMEOUT_MINUTES" ] && [ "$TIMEOUT_MINUTES" -gt 0 ]; then
+  echo "启动超时监控进程（${TIMEOUT_MINUTES}分钟后自动退出）..."
+  # 在后台启动监控进程
+  nohup bash -c "
+    # 等待vllm服务启动
+    echo '等待vllm服务启动...'
+    for i in {1..60}; do
+      if ss -tuln 2>/dev/null | grep -q ':$PORT ' || netstat -tuln 2>/dev/null | grep -q ':$PORT '; then
+        echo 'vllm服务已启动，开始监控'
+        break
+      fi
+      sleep 1
+    done
+    
+    # 导入并执行监控函数
+    $(declare -f monitor_timeout)
+    monitor_timeout '$PORT' '$TIMEOUT_MINUTES'
+  " > /tmp/ezvllm_monitor_${PORT}.log 2>&1 &
+  
+  MONITOR_PID=$!
+  echo "超时监控进程已启动 (PID: $MONITOR_PID)"
+  echo "监控日志: /tmp/ezvllm_monitor_${PORT}.log"
+  echo "超时日志: /tmp/ezvllm_timeout_${PORT}.log"
+fi
+
+# 启动vllm服务
 eval $CMD
 
 # 错误处理
 if [ $? -ne 0 ]; then
   echo "Error running vllm"
+  # 如果vllm启动失败，杀死监控进程
+  if [ -n "$MONITOR_PID" ]; then
+    kill "$MONITOR_PID" 2>/dev/null
+  fi
   exit 1
 fi
