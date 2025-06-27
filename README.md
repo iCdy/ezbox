@@ -38,6 +38,7 @@
 **主要功能:**
 - 快速启动和管理 `vLLM` 服务
 - 支持超时自动退出功能，节省资源
+- **智能GPU自动选择功能**，自动检测并选择最优可用GPU
 - 交互式聊天界面
 - 灵活的配置管理
 - 服务状态检查
@@ -48,6 +49,9 @@
 ```bash
 # 启动服务
 ezvllm serve -m "Qwen/Qwen3-4B" -p 8009
+
+# 自动选择最优GPU启动服务
+ezvllm serve -m "Qwen/Qwen3-4B" -p 8009 -g a
 
 # 启动服务并设置30分钟超时
 ezvllm serve -m "Qwen/Qwen3-4B" -p 8009 -t 30

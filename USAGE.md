@@ -58,6 +58,7 @@ source ~/.bash_profile  # macOS bash 用户
   - [基本用法](#基本用法)
   - [命令详解](#命令详解)
     - [serve - 启动服务](#serve---启动服务)
+      - [GPU自动选择功能详解](#gpu自动选择功能详解)
     - [chat - 与模型对话](#chat---与模型对话)
     - [check - 检查服务状态](#check---检查服务状态)
     - [config - 管理配置](#config---管理配置)
@@ -118,7 +119,7 @@ source ~/.bash_profile  # macOS bash 用户
 
 # ezvllm - vLLM 服务管理工具
 
-`ezvllm` 是一个简化 vLLM 服务管理的命令行工具，支持快速启动模型服务、交互式聊天、服务状态检查和灵活的配置管理。新增超时自动退出功能，可在指定时间内无请求时自动关闭服务，有效节省计算资源。
+`ezvllm` 是一个简化 vLLM 服务管理的命令行工具，支持快速启动模型服务、交互式聊天、服务状态检查和灵活的配置管理。新增超时自动退出功能，可在指定时间内无请求时自动关闭服务，有效节省计算资源。**最新版本新增智能GPU自动选择功能**，能够自动检测所有GPU状态并选择最优可用GPU。
 
 ## 安装
 
@@ -194,7 +195,7 @@ ezvllm serve [选项]
 **选项：**
 
 - `-e, --env-name NAME` - 指定 conda 环境名称，默认为 "vllm"
-- `-g, --gpu-id ID` - 指定要使用的 GPU ID，默认为 "0"
+- `-g, --gpu-id ID` - 指定要使用的 GPU ID，默认为 "0"。**使用 'a' 或 'auto' 可自动选择最优可用GPU**
 - `-m, --model-name NAME` - 指定模型名称，默认为 "Qwen/Qwen3-4B"
 - `-k, --api-key KEY` - 指定 API 密钥，默认为 "1205"
 - `-p, --port PORT` - 指定服务端口，默认为 "8009"
@@ -210,8 +211,16 @@ ezvllm serve [选项]
 # 使用默认配置启动服务
 ezvllm serve
 
+# 自动选择最优GPU启动服务
+ezvllm serve -g a
+# 或
+ezvllm serve --gpu-id auto
+
 # 指定模型和端口
 ezvllm serve -m "meta-llama/Llama-2-7b-chat-hf" -p 8008
+
+# 自动选择GPU并指定模型
+ezvllm serve -g a -m "Qwen/Qwen3-7B" -p 8888
 
 # 使用 1 号 GPU 并限制 GPU 利用率
 ezvllm serve -g 1 -u 0.8
@@ -222,8 +231,49 @@ ezvllm serve -l 2048
 # 设置30分钟超时，无请求时自动退出
 ezvllm serve -t 30
 
+# 自动选择GPU并设置超时
+ezvllm serve -g a -t 45
+
 # 传递额外参数给 vllm
 ezvllm serve -v "--tensor-parallel-size 2 --quantization awq"
+```
+
+#### GPU自动选择功能详解
+
+ezvllm 提供智能GPU自动选择功能，可以自动检测所有GPU的状态并选择最优可用GPU。
+
+**使用方法：**
+```bash
+# 使用 -g a 或 --gpu-id a 启用自动选择
+ezvllm serve -g a
+ezvllm serve --gpu-id auto
+```
+
+**选择策略：**
+- 自动检测所有可用GPU的状态
+- 优先选择GPU利用率、显存利用率和显存使用率均小于5%的GPU
+- 如果多个GPU都符合条件，选择ID较小的GPU
+- 如果没有找到完全空闲的GPU，会提示用户手动指定或等待
+
+**状态检测内容：**
+- GPU计算利用率
+- GPU显存利用率  
+- 显存使用情况（已用/总容量）
+
+**使用场景：**
+- 多GPU服务器环境，自动避开正在使用的GPU
+- 提高资源利用效率，避免GPU冲突
+- 适用于共享GPU环境下的模型部署
+
+**示例输出：**
+```
+正在检测可用GPU...
+检测到 4 张GPU
+GPU 0: 计算利用率=0%, 显存利用率=0%, 显存使用=156MB/24564MB (1%)
+GPU 1: 计算利用率=85%, 显存利用率=90%, 显存使用=22000MB/24564MB (90%)
+GPU 2: 计算利用率=2%, 显存利用率=1%, 显存使用=200MB/24564MB (1%)
+GPU 3: 计算利用率=0%, 显存利用率=0%, 显存使用=156MB/24564MB (1%)
+自动选择GPU: 0 (利用率: 0%)
 ```
 
 ### chat - 与模型对话
@@ -335,7 +385,7 @@ ezvllm 使用位于 `$HOME/.config/ezvllm/config` 的配置文件存储默认设
 可配置的参数包括：
 
 - `ENV_NAME` - Python 虚拟环境名称
-- `GPU_ID` - 使用的 GPU ID
+- `GPU_ID` - 使用的 GPU ID（可设置为 "a" 或 "auto" 启用自动选择）
 - `MODEL_NAME` - 模型名称
 - `API_KEY` - API 密钥
 - `PORT` - 服务端口
@@ -351,11 +401,27 @@ ezvllm 使用位于 `$HOME/.config/ezvllm/config` 的配置文件存储默认设
 **快速启动一个本地模型并聊天：**
 
 ```bash
-# 启动服务
-ezvllm serve -m "/path/to/local/model"
+# 启动服务（自动选择最优GPU）
+ezvllm serve -g a -m "/path/to/local/model"
 
 # 在新终端中启动聊天
 ezvllm chat -s "你是一个友好的助手"
+```
+
+**GPU自动选择使用示例：**
+
+```bash
+# 基本自动选择GPU
+ezvllm serve -g a
+
+# 自动选择GPU并指定模型
+ezvllm serve -g auto -m "Qwen/Qwen3-7B"
+
+# 自动选择GPU，设置端口和超时
+ezvllm serve -g a -p 8888 -t 60
+
+# 自动选择GPU并结合其他参数
+ezvllm serve -g a -m "meta-llama/Llama-2-7b-chat-hf" -u 0.8 -t 30
 ```
 
 **设置默认配置并使用：**
@@ -365,16 +431,16 @@ ezvllm chat -s "你是一个友好的助手"
 ezvllm config set MODEL_NAME="Qwen/Qwen3-7B"
 ezvllm config set PORT="8888"
 
-# 使用默认设置启动
-ezvllm serve
+# 使用默认设置启动（自动选择GPU）
+ezvllm serve -g a
 ```
 
 **运行多个模型实例：**
 
 ```bash
-# 在不同端口启动不同模型
-ezvllm serve -m "Qwen/Qwen3-4B" -p 8001 -g 0
-ezvllm serve -m "meta-llama/Llama-2-7b-chat-hf" -p 8002 -g 1
+# 在不同端口启动不同模型（自动选择不同GPU）
+ezvllm serve -g a -m "Qwen/Qwen3-4B" -p 8001
+ezvllm serve -g a -m "meta-llama/Llama-2-7b-chat-hf" -p 8002
 
 # 与特定实例聊天
 ezvllm chat -p 8002
@@ -386,24 +452,27 @@ ezvllm chat -p 8002
 # 启动服务，30分钟无请求后自动退出
 ezvllm serve -t 30
 
+# 自动选择GPU并设置超时
+ezvllm serve -g a -t 30
+
 # 启动指定模型，60分钟无请求后自动退出
 ezvllm serve -m "Qwen/Qwen3-7B" -p 8888 -t 60
 
-# 结合其他参数使用超时功能
-ezvllm serve -m "meta-llama/Llama-2-7b-chat-hf" -g 1 -u 0.8 -t 45
+# 结合GPU自动选择、其他参数和超时功能
+ezvllm serve -g a -m "meta-llama/Llama-2-7b-chat-hf" -u 0.8 -t 45
 ```
 
 **超时功能使用场景：**
 
 ```bash
 # 开发测试：短时间测试模型，避免忘记关闭
-ezvllm serve -m "test-model" -t 15
+ezvllm serve -g a -m "test-model" -t 15
 
 # 临时演示：演示结束后自动清理资源
-ezvllm serve -m "demo-model" -p 8080 -t 120
+ezvllm serve -g a -m "demo-model" -p 8080 -t 120
 
 # 批处理任务：处理完成后自动退出
-ezvllm serve -m "batch-model" -t 180
+ezvllm serve -g a -m "batch-model" -t 180
 ```
 
 ## 疑难解答
@@ -413,6 +482,13 @@ ezvllm serve -m "batch-model" -t 180
 - 检查 conda 环境是否正确安装了 vLLM
 - 验证 GPU 是否可用
 - 确认模型路径是否正确
+
+**GPU自动选择相关问题：**
+
+- 如果自动选择失败，请确认 `nvidia-smi` 命令可用
+- 当所有GPU都在使用时，系统会提示手动指定GPU或等待
+- 可以使用 `nvidia-smi` 命令手动查看GPU状态
+- 在没有GPU的环境中，自动选择会回退到默认GPU 0
 
 **API 连接失败：**
 
@@ -425,6 +501,7 @@ ezvllm serve -m "batch-model" -t 180
 - 考虑减小 `MAX_MODEL_LEN` 值
 - 调整 `GPU_UTIL` 参数
 - 使用量化版本的模型
+- 使用 `-g a` 自动选择负载较低的GPU
 
 ---
 

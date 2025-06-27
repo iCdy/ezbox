@@ -210,11 +210,6 @@ show_serve_help() {
   echo "  -v, --vllm-args \"ARGS\"    传递额外参数给vllm serve命令（需要放在最后）"
   echo "  -h, --help                显示此帮助信息"
   echo "  -t, --timeout MINUTES     设置无响应退出时间（单位：分钟，默认: ${SHOW_TIMEOUT_MINUTES:- ∞ }分钟）"
-  echo ""
-  echo "GPU自动选择说明:"
-  echo "  使用 -g a 或 --gpu-id a 时，系统将自动检测所有GPU的利用率"
-  echo "  并选择GPU利用率、显存利用率和显存使用率均小于5%的GPU"
-  echo "  如果没有符合条件的GPU，将选择利用率最低的GPU"
   exit 0
 }
 
