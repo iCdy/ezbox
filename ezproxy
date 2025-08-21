@@ -1,6 +1,6 @@
 #! /bin/bash
 
-VERSION="2.6.0"
+VERSION="2.7.0"
 
 PROXY_IP=""
 PROXY_PORT="1080"
@@ -58,6 +58,7 @@ JUPYTER_PROXY=false
 UNSET_PROXY=false
 VSCODE_PROXY=false
 LOCAL_PROXY=false
+GIT_LOCAL=false
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -112,6 +113,13 @@ while [ $# -gt 0 ]; do
             EXIT_AFTER_OPTS=true
             return 0
             ;;
+        --git-local)
+            GIT_LOCAL=true
+            shift
+            ;;
+        --git-global)
+            shift
+            ;;
         *)
             echo "未知选项: $1"
             usage
@@ -129,10 +137,17 @@ fi
 
 if [ "$UNSET_PROXY" = true ]; then
     if [ "$GIT_PROXY" = true ]; then
-        git config --global --unset http.proxy
-        git config --global --unset https.proxy
-        echo "已取消 Git 代理设置"
-        return 0
+
+        if [ "$GIT_LOCAL" = true ]; then
+            git config --local --unset http.proxy
+            git config --local --unset https.proxy
+            echo "已取消 Git (local)代理设置"
+        else
+            git config --global --unset http.proxy
+            git config --global --unset https.proxy
+            echo "已取消 Git (global)代理设置"
+            return 0
+        fi
     elif [ "$VSCODE_PROXY" = true ]; then
         if command -v jq &> /dev/null; then
             jq 'del(.["http.proxy"], .["https.proxy"])' "$SETTINGS_FILE" > temp.json && mv temp.json "$SETTINGS_FILE"
@@ -218,11 +233,19 @@ if [[ "$VSCODE_PROXY" = true && "$UNSET_PROXY" = false ]]; then
 fi
 
 if [ "$GIT_PROXY" = "true" ]; then
-    git config --global http.proxy "http://$PROXY_ADDR"
-    git config --global https.proxy "http://$PROXY_ADDR"
-    echo "已设置 Git 代理: $PROXY_ADDR"
-    echo "请注意，Git 代理设置不会影响其他命令行工具。"
-    return 0
+    if [ "$GIT_LOCAL" = "true" ]; then
+        git config --local http.proxy "http://$PROXY_ADDR"
+        git config --local https.proxy "http://$PROXY_ADDR"
+        echo "已设置 Git 代理: $PROXY_ADDR (local)"
+        echo "请注意，Git 代理设置不会影响其他命令行工具。"
+        return 0
+    else
+        git config --global http.proxy "http://$PROXY_ADDR"
+        git config --global https.proxy "http://$PROXY_ADDR"
+        echo "已设置 Git 代理: $PROXY_ADDR (global)" 
+        echo "请注意，Git 代理设置不会影响其他命令行工具。"
+        return 0
+    fi
 fi
 
 if [ "$JUPYTER_PROXY" = "true" ]; then
