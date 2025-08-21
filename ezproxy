@@ -152,23 +152,25 @@ if [ "$UNSET_PROXY" = true ]; then
     fi
 fi
 
-if [ "$LOCAL_PROXY" = true ]; then
-    PROXY_IP="127.0.0.1"
-    PROXY_ADDR="${PROXY_IP}:${PROXY_PORT}"
-    export http_proxy="http://$PROXY_ADDR"
-    export https_proxy="http://$PROXY_ADDR"
-    export all_proxy="socks5://$PROXY_ADDR"
+# if [ "$LOCAL_PROXY" = true ]; then
+#     PROXY_IP="127.0.0.1"
+#     PROXY_ADDR="${PROXY_IP}:${PROXY_PORT}"
+#     export http_proxy="http://$PROXY_ADDR"
+#     export https_proxy="http://$PROXY_ADDR"
+#     export all_proxy="socks5://$PROXY_ADDR"
 
-    echo "已设置代理: $PROXY_ADDR"
-    echo "当前会话已启用代理。关闭当前终端或重新登录后，代理设置将失效。"
-    echo "您可以通过运行以下命令检查代理是否工作:"
-    echo "curl -I https://www.google.com"
-    return 0
-fi
+#     echo "已设置代理: $PROXY_ADDR"
+#     echo "当前会话已启用代理。关闭当前终端或重新登录后，代理设置将失效。"
+#     echo "您可以通过运行以下命令检查代理是否工作:"
+#     echo "curl -I https://www.google.com"
+#     return 0
+# fi
 
 if [ -z "$PROXY_IP" ]; then
     if [ -n "$SSH_CLIENT" ]; then
         PROXY_IP=$(echo "$SSH_CLIENT" | awk '{print $1}')
+    elif [ "$LOCAL_PROXY" = true ]; then
+        PROXY_IP="127.0.0.1"
     else
         echo "未提供代理IP，且无法从SSH_CLIENT获取IP"
         return 1
