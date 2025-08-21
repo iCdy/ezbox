@@ -1,6 +1,6 @@
 #! /bin/bash
 
-VERSION="2.7.0"
+VERSION="2.8.0"
 
 PROXY_IP=""
 PROXY_PORT="1080"
@@ -42,6 +42,8 @@ usage() {
     echo "  -g GIT           设置 Git 代理"
     echo "  -r RESET         取消代理设置"
     echo "  -j JUPYTER       设置 Jupyter Notebook 代理"
+    echo "  --git-local      Git 本地仓库代理"
+    echo "  --git-global     Git 全局代理"
     echo "  -h               显示此帮助信息"
     return 1
 }
@@ -59,14 +61,18 @@ UNSET_PROXY=false
 VSCODE_PROXY=false
 LOCAL_PROXY=false
 GIT_LOCAL=false
+CHECK_PROXY=false
 
 while [ $# -gt 0 ]; do
     case "$1" in
         -c)
-            echo "当前代理设置:"
-            env | grep -i proxy
-            EXIT_AFTER_OPTS=true
-            return 0
+            # echo "当前代理设置:"
+            # env | grep -i proxy
+            # EXIT_AFTER_OPTS=true
+            # return 0
+            # ;;
+            CHECK_PROXY=true
+            shift
             ;;
         -e)
             VSCODE_PROXY=true
@@ -133,6 +139,63 @@ if [ "$EXIT_AFTER_OPTS" = true ]; then
     return 0
 fi
 
+if [ "$CHECK_PROXY" = true ]; then
+
+    show_http_proxy=$(env | grep -i '^http_proxy='  | cut -d= -f2-)
+    show_https_proxy=$(env | grep -i '^https_proxy=' | cut -d= -f2-)
+    show_all_proxy=$(env | grep -i '^all_proxy='   | cut -d= -f2-)
+    echo ""
+    echo "当前终端 代理设置:"
+    echo "  http_proxy: \t${show_http_proxy:-未设置}"
+    echo "  https_proxy: \t${show_https_proxy:-未设置}"
+    echo "  all_proxy: \t${show_all_proxy:-未设置}"
+
+    
+    if [ "$GIT_PROXY" = true ]; then
+        if [ "$GIT_LOCAL" = false ]; then
+            echo ""
+            echo "Git (global) 代理设置:"
+            global_git_http_proxy=$(git config --global --get http.proxy)
+            global_git_https_proxy=$(git config --global --get https.proxy)
+            echo "  http_proxy: \t${global_git_http_proxy:-未设置}"
+            echo "  https_proxy: \t${global_git_https_proxy:-未设置}"
+        fi
+
+        # if [ "$GIT_LOCAL" = true ]; then
+        if [ ! -f ".git/config" ]; then
+            echo ""
+            echo "当前目录不是一个 Git 仓库，无法显示 Git (local) 代理设置。"
+            return 1
+        else
+            echo ""
+            echo "Git (local) 代理设置:"
+            local_git_http_proxy=$(git config --local --get http.proxy)
+            local_git_https_proxy=$(git config --local --get https.proxy)
+            echo "  http_proxy: \t${local_git_http_proxy:-未设置}"
+            echo "  https_proxy: \t${local_git_https_proxy:-未设置}"
+
+        fi
+        # fi
+    fi
+
+    
+    if [ "$VSCODE_PROXY" = true ]; then
+        if [ -f "$SETTINGS_FILE" ]; then
+            echo ""
+            echo "VS Code 代理设置:"
+            jq -r '
+                "   http.proxy: \t\(.["http.proxy"] // "未设置")",
+                "   https.proxy: \t\(.["https.proxy"] // "未设置")"
+                ' "$SETTINGS_FILE" 2>/dev/null || echo "无法解析 VS Code settings.json 文件"
+        else
+            echo ""
+            echo "VS Code 代理设置: "
+            echo "  http.proxy: \t未设置"
+            echo "  https.proxy: \t未设置"
+        fi
+    fi
+    return 0
+fi
 
 
 if [ "$UNSET_PROXY" = true ]; then
@@ -163,7 +226,7 @@ if [ "$UNSET_PROXY" = true ]; then
         fi
     else
         unset http_proxy https_proxy all_proxy
-        echo "已取消全局代理设置"
+        echo "已取消当前终端全局代理设置"
         return 0
     fi
 fi
