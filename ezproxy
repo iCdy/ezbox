@@ -142,6 +142,7 @@ if [ "$UNSET_PROXY" = true ]; then
             git config --local --unset http.proxy
             git config --local --unset https.proxy
             echo "已取消 Git (local)代理设置"
+            return 0
         else
             git config --global --unset http.proxy
             git config --global --unset https.proxy
