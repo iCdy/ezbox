@@ -42,6 +42,8 @@ usage() {
     echo "  -g GIT           设置 Git 代理"
     echo "  -r RESET         取消代理设置"
     echo "  -j JUPYTER       设置 Jupyter Notebook 代理"
+    echo "  --git-local      Git 本地仓库代理"
+    echo "  --git-global     Git 全局代理"
     echo "  -h               显示此帮助信息"
     return 1
 }
